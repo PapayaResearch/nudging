@@ -1,0 +1,152 @@
+import os
+import pandas
+import openai
+from tqdm.auto import tqdm
+
+
+MODEL = "gpt-3.5-turbo"
+MAX_ROWS = 10
+
+
+
+INITIAL_PROMPT = """Welcome! In this task you will play a series of 32 choice games. In each game you will choose a basket. Each basket contains several prizes that you will get if you choose the basket. There are different types of prizes (A and B in the example below) and they are worth different amounts of points (23 and 7). You want to get the most points possible.
+
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 23 Points,,,,,
+B: 7 Points,,,,,
+
+The number of prizes in each basket varies. To see how many prizes of each type a basket has, you can click on the corresponding box twice.
+
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 23 Points,,4,,,,
+B: 7 Points,,,,,,
+Total click cost: 2 points
+
+You may reveal as many or as few of these boxes as you wish. This may help you decide which basket to choose. However, each click costs **1 point**. That means that it costs **2 points** to reveal a box.
+
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 23 Points,,4,,5,,
+B: 7 Points,,,3,,,
+Total click cost: 6 points
+
+When you have finished revealing boxes, you can select a basket by clicking on the gray box in the top row. In this example, let's imagine that you select Basket 4.
+
+In this case, you would win 5 A prizes (worth 23 points each) and 4 B prizes (worth 7 points each), for a total of 143 points. However, because you spent 6 points revealing three boxes, your net earnings on this problem would be 137 points.
+
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 23 Points,,4,,5,
+B: 7 Points,,,3,4,
+Total click cost: 6 points
+You won 5 A prizes, and 4 B prizes, totaling 143 points.
+
+Different problems will have different numbers of baskets and prizes.
+
+Prizes,Basket 1,Basket 2
+A: 3 Points,,
+B: 6 Points,,
+C: 8 Points,,
+D: 10 Points,,
+E: 3 Points,,
+Total click cost: 0 points
+
+Let's see the values that would be revealed if you clicked on all of the boxes on this problem. Note that because each box costs 2 points to reveal, revealing all 10 of them would cost 20 points.
+
+Prizes,Basket 1,Basket 2
+A: 3 Points,5,7
+B: 6 Points,4,8
+C: 8 Points,4,6
+D: 10 Points,4,5
+E: 3 Points,6,5
+Total click cost: 20 points
+
+On average, each basket has **5 prizes** of each type, although the actual prize number can be anywhere from 0 to 10. Also note that different baskets can have different total numbers of prizes.
+
+Prizes,Basket 1,Basket 2
+A: 3 Points,5,7
+B: 6 Points,4,8
+C: 8 Points,4,6
+D: 10 Points,4,5
+E: 3 Points,6,5
+Total click cost: 20 points
+
+The points of the prizes will always add up to **30 points**. This means that on problems where there are more types of prizes, the prizes will be worth less.
+
+On problems with two types of prizes, the prizes will be worth 15 points on average.
+
+Prizes,Basket 1,Basket 2
+A: 6 Points,,
+B: 24 Points,,
+Total click cost: 0 points
+
+And on problems with five types of prizes, the prizes will be worth 6 points on average.
+
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 8 Points,,,,,
+B: 15 Points,,,,,
+C: 4 Points,,,,,
+D: 2 Points,,,,,
+E: 1 Points,,,,,
+Total click cost: 0 points
+
+On certain problems, you will have the option of choosing a recommended basket before revealing any boxes.
+
+The recommended basket is the **highest-paying basket if the prizes are worth equal numbers of points**.
+
+Do you want to choose basket 3?
+It's pays the most when the prized are equally valuable.
+Yes,No
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 12 Points,,,,,
+B: 18 Points,,,,,
+Total click cost: 0 points
+
+After choosing a basket, you move on to a new problem. With each new game, the number of prizes in each basket will change. The value of the prizes will also change.
+
+You will earn real money for your choices. At the end of the experiment, the points you've earned will be paid as a bonus with **30 points equal to $0.01**.
+"""
+
+
+QUIZ_PROMPT = """Please answer a few questions to confirm that you understand the task
+1. Do baskets with 5 types of prizes tend to pay more than baskets with 2 types of prizes?
+[Yes/No/Maybe]
+
+2. Why is your answer to question 1 true?
+[Baskets with more types of prizes will tend to have more prizes, and so will pay more/When there are more types of prizes, the prizes tend to be less valuable/Baskets with more types of prizes will tend to have more valuable prizes]
+
+3. How many points does it cost to reveal a box?
+[No points/1 point/Either 1 point or 2 points, depending on the problem/2 points]
+
+4. Does each basket have the same the total number of prizes?
+[Yes/No/Maybe]
+
+5. How many prizes of each type does a basket have on average?
+[1/2/5]"""
+
+INCORRECT_PROMPT = """Here's some info to help you get the highest bonus possible
+▪ Baskets pay the same on average, regardless of the number of prizes they have.
+▪ This is because the prizes in baskets with 2 prize types tend to be more valuable than those in baskets with 5 prize types.
+▪ Boxes cost 2 points to reveal.
+▪ Different baskets can have different total numbers of prizes.
+▪ On average, each basket has 5 prizes of each type."""
+
+PRACTICE_PROMPT = """You will first complete 2 practice games. Earnings from these games will not be added to your final pay."""
+
+TEST_PROMPT = """You will now complete 32 test games. Earnings from these games will be added to your final pay."""
+
+
+
+def main():
+    with open("oai.txt") as infile:
+        openai.api_key = infile.read().strip()
+
+
+    df = pandas.read_csv("default_data.csv")
+    df_practice = df[df.is_practice]
+    df_test = df[~df.is_practice]
+
+    # Subselect rows for now
+    df = df.iloc[:MAX_ROWS]
+
+
+if __name__ == "__main__":
+    main()
