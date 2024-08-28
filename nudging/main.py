@@ -106,16 +106,16 @@ def get_nudge_tools():
             "function": {
                 "name": "default",
                 "strict": True,
-                "description": "Call this whenever you decide to accept or decline the default basket.",
+                "description": "Call this to accept or decline the default basket.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "accept_default": {
+                        "decision": {
                             "type": "boolean",
                             "description": "Accept or decline the default basket.",
                         },
                     },
-                    "required": ["accept_default"],
+                    "required": ["decision"],
                     "additionalProperties": False,
                 },
             }
@@ -265,7 +265,7 @@ def roll_games(df, messages, model, is_practice):
             elif action == "default":
                 logging.info("DEFAULT: {}".format(args))
 
-                if args.get("accept_default"):
+                if args.get("decision"):
                     # Calculate game results
                     points = payoff_matrix[:, nudge_index]
                     total_points = np.sum(points * weights)
