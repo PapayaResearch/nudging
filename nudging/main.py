@@ -27,6 +27,9 @@ import exp1
 import ast
 import json
 import argparse
+import logging
+import os
+from datetime import datetime
 from tqdm.auto import tqdm
 
 MAX_PARTICIPANTS = 1
@@ -54,7 +57,7 @@ def get_game_tools(prizes, baskets):
             "function": {
                 "name": "reveal",
                 "strict": True,
-                "description": "Call this whenever you need to reveal the value of a box",
+                "description": "Call this whenever you choose to reveal the value of a box",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -79,14 +82,14 @@ def get_game_tools(prizes, baskets):
             "function": {
                 "name": "select",
                 "strict": True,
-                "description": "Call this whenever you need to select a basket",
+                "description": "Call this whenever you choose to select a basket",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "basket": {
                             "type": "integer",
                             "enum": baskets,
-                            "description": "The basket's index.",
+                            "description": "The basket's number.",
                         },
                     },
                     "required": ["basket"],
@@ -101,18 +104,18 @@ def get_nudge_tools():
         {
             "type": "function",
             "function": {
-                "name": "nudge",
+                "name": "default",
                 "strict": True,
-                "description": "Call this whenever you need to accept or decline a default basket.",
+                "description": "Call this whenever you decide to accept or decline the default basket.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "default": {
+                        "accept_default": {
                             "type": "boolean",
-                            "description": "Accept or decline the basket.",
+                            "description": "Accept or decline the default basket.",
                         },
                     },
-                    "required": ["default"],
+                    "required": ["accept_default"],
                     "additionalProperties": False,
                 },
             }
@@ -126,7 +129,7 @@ def get_quiz_tools():
             "function": {
                 "name": "quiz",
                 "strict": True,
-                "description": "Call this whenever you need to answer the quiz.",
+                "description": "Call this to answer the quiz.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -202,8 +205,7 @@ def roll_games(df, messages, model, is_practice):
             )
 
         # Start interaction with initial game
-        print("\n")
-        print(game)
+        logging.info(game)
         messages.append({"role": "user", "content": game})
 
         # Interact until the end of game (i.e. basket is selected)
@@ -223,8 +225,7 @@ def roll_games(df, messages, model, is_practice):
             args = json.loads(tool_call.function.arguments)
 
             if action == "reveal":
-                print("\n")
-                print("REVEAL: ", args)
+                logging.info("REVEAL: {}".format(args))
 
                 # Update state
                 prize = args.get("prize")
@@ -238,8 +239,7 @@ def roll_games(df, messages, model, is_practice):
                 args["reveal"] = new_game
 
             elif action == "select":
-                print("\n")
-                print("SELECT: ", args)
+                logging.info("SELECT: {}".format(args))
 
                 # Calculate game results
                 points = payoff_matrix[:, args.get("basket")-1]
@@ -262,11 +262,10 @@ def roll_games(df, messages, model, is_practice):
                 new_game += f"\nTotal earnings (prize values minus reveal cost): ${net_earnings:.3f}"
                 args["select"] = new_game
 
-            elif action == "nudge":
-                print("\n")
-                print("NUDGE: ", args)
+            elif action == "default":
+                logging.info("DEFAULT: {}".format(args))
 
-                if args.get("default"):
+                if args.get("accept_default"):
                     # Calculate game results
                     points = payoff_matrix[:, nudge_index]
                     total_points = np.sum(points * weights)
@@ -287,7 +286,7 @@ def roll_games(df, messages, model, is_practice):
                     new_game = format_game(payoff_matrix, revealed, weights, cost, total_earnings)
                     new_game += f"\nYou won {prizes}, totaling {total_points} points."
                     new_game += f"\nTotal earnings (prize values minus reveal cost): ${net_earnings:.3f}"
-                    args["nudge"] = new_game
+                    args["default"] = new_game
 
 
                 else:
@@ -299,10 +298,9 @@ def roll_games(df, messages, model, is_practice):
 
                     # Prepare game details with the newly revealed box
                     new_game = format_game(payoff_matrix, revealed, weights, cost, total_earnings)
-                    args["nudge"] = new_game
+                    args["default"] = new_game
 
-            print("\n")
-            print(new_game)
+            logging.info(new_game)
 
             # Simulate the tool call response
             tool_response = {
@@ -372,8 +370,7 @@ def roll_quiz(messages, model):
         answers = [args.get(f"question_{i}") for i in range (1, 6)]
 
         if answers == correct_answers:
-            print("\n")
-            print("CORRECT QUIZ: ", args)
+            logging.info("CORRECT QUIZ: {}".format(args))
 
             # Update state
             pass_quiz = True
@@ -401,8 +398,7 @@ def roll_quiz(messages, model):
             messages.append(tool_response)
             messages.append(function_call_result_message)
         else:
-            print("\n")
-            print("INCORRECT QUIZ: ", args)
+            logging.info("INCORRECT QUIZ: {}".format(args))
 
             # Update state
             args["quiz"] = "You didn't pass the quiz."
@@ -441,17 +437,36 @@ def main():
     parser.add_argument("--max-participants", type=int, default=MAX_PARTICIPANTS)
     args = parser.parse_args()
 
+    # Create a folder for logs if it doesn't exist
+    log_folder = "../logs"
+    os.makedirs(log_folder, exist_ok=True)
+
+    # Create a log file with a datetime-based name
+    date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_filename = date + ".log"
+    log_filepath = os.path.join(log_folder, log_filename)
+
+    # Set up logging configuration
+    logging.basicConfig(
+        filename=log_filepath,
+        level=logging.INFO,  # You can change this to DEBUG, ERROR, etc.
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
+    # Result CSV file
+    results_file = "../results/" + date + ".csv"
+
     # Set up OpenAI API key
-    with open("oai.txt") as infile:
+    with open("../oai.txt") as infile:
         openai.api_key = infile.read().strip()
 
     # Load data
-    df = pd.read_csv("default_data.csv")
+    df = pd.read_csv("../data/default_data.csv")
 
     # Iterate over participants
     all_results = []
     for pid in tqdm(df.participant_id.unique()[:args.max_participants]):
-        print(f"Participant {pid}")
+        logging.info("PARTICIPANT: {}".format(pid))
 
         df_participant = df[df.participant_id == pid].sort_values(by="trial_num",
                                                                   ascending=True)
@@ -468,15 +483,16 @@ def main():
         messages.append({"role": "user", "content": exp1.PRACTICE_PROMPT})
         df_practice = df_participant[df_participant.is_practice]
         messages, results = roll_games(df_practice, messages, args.model, is_practice=True)
-        all_results.extend(results)
+        if not os.path.exists(results_file):
+            pd.DataFrame(results).to_csv(results_file, mode='w', header=True, index=False)
+        else:
+            pd.DataFrame(results).to_csv(results_file, mode='a', header=False, index=False)
 
         # Test games
         messages.append({"role": "user", "content": exp1.TEST_PROMPT})
         df_test = df_participant[~df_participant.is_practice]
         messages, results = roll_games(df_test, messages, args.model, is_practice=False)
-        all_results.extend(results)
-
-    pd.DataFrame(all_results).to_csv("results.csv", index=False)
+        pd.DataFrame(results).to_csv(results_file, mode='a', header=False, index=False)
 
 if __name__ == "__main__":
     main()
