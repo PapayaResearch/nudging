@@ -29,42 +29,76 @@ import json
 import argparse
 import logging
 import os
+import tiktoken
 from datetime import datetime
 from tqdm.auto import tqdm
 
 MAX_PARTICIPANTS = 1
+TEMPERATURE = 0.2 # Default in the OpenAI API
+ENC = tiktoken.encoding_for_model("gpt-4o")
 
-def format_game(payoff_matrix, revealed, weights, cost, total_earnings):
+def format_game(
+        payoff_matrix,
+        revealed,
+        weights,
+        cost,
+        total_earnings,
+        is_practice,
+        n_game,
+        n_game_total
+):
     n_baskets = payoff_matrix.shape[1]
-    header = ["Prize", "Points"] + [f"Basket {i+1}" for i in range(n_baskets)]
+    header = ["Prizes"] + [f"Basket {i+1}" for i in range(n_baskets)]
     matrix = [header]
     for idx, (row, row_idx) in enumerate(zip(payoff_matrix, revealed)):
         matrix.append(
-            [chr(idx + 65), str(weights[idx])] + [str(value)
-                                                  if flag else ""
-                                                  for value, flag in zip(row, row_idx)]
+            [chr(idx + 65) + ": " + str(weights[idx]) + " points"] + [str(value)
+                                                                      if flag else "?"
+                                                                      for value, flag in zip(row, row_idx)]
         )
 
-    game = f"Total Earnings: ${total_earnings:.3f}\n"
-    game += "\n".join([",".join(l) for l in matrix])
-    game += f"\nTotal reveal cost: {cost} points"
+    markdown = pd.DataFrame(
+        matrix[1:], columns=matrix[0]
+    ).to_markdown(
+        index=False,
+        numalign="right",
+        colalign=("right",)
+    )
+
+    game = f"Practice game {n_game} of {n_game_total}\n" if is_practice else f"Test game {n_game} of {n_game_total}\n"
+    game += f"Total Earnings: ${total_earnings:.3f}\n"
+    game += markdown
+    # "Total reveal cost" was understood as cost to reveal
+    game += f"\nTotal accumulated cost: {cost} points"
     return game
 
 def get_game_tools(prizes, baskets):
+    prizes = [chr(65 + i) for i in prizes] # Letter instead of indices
     return [
         {
             "type": "function",
             "function": {
                 "name": "reveal",
                 "strict": True,
-                "description": "Call this whenever you choose to reveal the value of a box",
+                "description": "Call this whenever you choose to reveal the value of a box.",
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "prize_points": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            },
+                            "description": "List of points for each prize.",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Explain your reasoning, and the value of the selected prize.",
+                        },
                         "prize": {
-                            "type": "integer",
+                            "type": "string",
                             "enum": prizes,
-                            "description": "The prize's index corresponding to the box.",
+                            "description": "The prize's letter corresponding to the box.",
                         },
                         "basket": {
                             "type": "integer",
@@ -72,7 +106,7 @@ def get_game_tools(prizes, baskets):
                             "description": "The basket's number corresponding to the box.",
                         },
                     },
-                    "required": ["prize", "basket"],
+                    "required": ["prize_points", "reason", "prize", "basket"],
                     "additionalProperties": False,
                 },
             }
@@ -82,17 +116,36 @@ def get_game_tools(prizes, baskets):
             "function": {
                 "name": "select",
                 "strict": True,
-                "description": "Call this whenever you choose to select a basket",
+                "description": "Call this whenever you choose to select a basket. Remember prizes apply to all baskets equally. The total value of the selected basket is calculated as the dot product of prize points by its corresponding box points (if revealed).",
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "prize_points": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            },
+                            "description": "List of points for each prize.",
+                        },
+                        "box_points": {
+                            "type": "string",
+                            "description": "List of box points only for the selected basket.",
+                        },
+                        "dot_product": {
+                            "type": "string",
+                            "description": "Dot product of prize points by box points of the selected basket.",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Explain your reasoning.",
+                        },
                         "basket": {
                             "type": "integer",
                             "enum": baskets,
                             "description": "The basket's number.",
                         },
                     },
-                    "required": ["basket"],
+                    "required": ["prize_points", "box_points", "dot_product", "reason", "basket"],
                     "additionalProperties": False,
                 },
             }
@@ -106,16 +159,24 @@ def get_nudge_tools():
             "function": {
                 "name": "default",
                 "strict": True,
-                "description": "Call this to accept or decline the default basket.",
+                "description": "Call this to accept or decline the default basket. Take into account the point difference between the largest and smallest prize. You should not accept if the point difference is large.",
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "point_difference": {
+                            "type": "integer",
+                            "description": "Point difference between the largest and smallest prize.",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Explain your reasoning, mentioning the point difference and its magnitude.",
+                        },
                         "decision": {
                             "type": "boolean",
                             "description": "Accept or decline the default basket.",
                         },
                     },
-                    "required": ["decision"],
+                    "required": ["point_difference", "reason", "decision"],
                     "additionalProperties": False,
                 },
             }
@@ -166,13 +227,44 @@ def get_quiz_tools():
         }
     ]
 
-def roll_games(df, messages, model, is_practice):
+def num_tokens_from_functions(functions):
+    """Return the number of tokens used by a list of functions."""
+    num_tokens = 0
+    for function in functions:
+        function_tokens = len(ENC.encode(function['name']))
+        function_tokens += len(ENC.encode(function['description']))
+
+        if 'parameters' in function:
+            parameters = function['parameters']
+            if 'properties' in parameters:
+                for propertiesKey in parameters['properties']:
+                    function_tokens += len(ENC.encode(propertiesKey))
+                    v = parameters['properties'][propertiesKey]
+                    for field in v:
+                        if field == 'type':
+                            function_tokens += 2
+                            function_tokens += len(ENC.encode(v['type']))
+                        elif field == 'description':
+                            function_tokens += 2
+                            function_tokens += len(ENC.encode(v['description']))
+                        else:
+                            print(f"Warning: not supported field {field}")
+                function_tokens += 11
+
+        num_tokens += function_tokens
+
+    num_tokens += 12
+    return num_tokens
+
+def roll_games(df, initial_messages, model, temperature, is_practice):
     # Global state
     total_earnings = 1.3 # dollars
 
     # Iterate through all (practice and test) games
     results = []
-    for row in df.itertuples():
+    for idx, row in enumerate(df.itertuples()):
+        # Messages only in the context of the current game
+        messages = initial_messages.copy()
         # Game details
         payoff_matrix = np.array(ast.literal_eval(row.payoff_matrix))
         revealed = np.full(payoff_matrix.shape, False)
@@ -180,6 +272,8 @@ def roll_games(df, messages, model, is_practice):
         nudge = row.trial_nudge == "default"
         nudge_index = int(row.nudge_index)
         default_cost = row.cost
+        n_game_total = df.shape[0]
+        n_game = (idx % n_game_total) + 1
 
         # Game state
         selected_basket = None
@@ -191,7 +285,16 @@ def roll_games(df, messages, model, is_practice):
         chose_nudge = False
 
         # Format initial game
-        game = format_game(payoff_matrix, revealed, weights, cost, total_earnings)
+        game = format_game(
+            payoff_matrix,
+            revealed,
+            weights,
+            cost,
+            total_earnings,
+            is_practice,
+            n_game,
+            n_game_total
+        )
         if nudge:
             game = \
                 f"\nDo you want to choose basket {nudge_index + 1}?" + \
@@ -203,6 +306,8 @@ def roll_games(df, messages, model, is_practice):
                 list(range(len(weights))), # prize indices
                 list(range(1, payoff_matrix.shape[1]+1)) # basket indices
             )
+            # TODO: Remove print
+            # print(num_tokens_from_functions([t.get("function") for t in tools]))
 
         # Start interaction with initial game
         logging.info(game)
@@ -212,11 +317,16 @@ def roll_games(df, messages, model, is_practice):
         while selected_basket is None:
             # Note that if you force the model to call a function
             # then the subsequent finish_reason will be "stop" instead of being "tool_calls".
+            # TODO: Remove print
+            # print(sum([len(ENC.encode(m.get("content", ""))) for m in messages]))
             response = openai.chat.completions.create(
                 model=model,
                 messages=messages,
                 tools=tools,
-                tool_choice="required" # Force model to use one or more tools
+                parallel_tool_calls=False,
+                tool_choice="required", # Force model to use one or more tools
+                temperature=temperature, # Range [0, 2]
+                max_tokens=300,
             )
 
             # Parse response
@@ -228,14 +338,23 @@ def roll_games(df, messages, model, is_practice):
                 logging.info("REVEAL: {}".format(args))
 
                 # Update state
-                prize = args.get("prize")
+                prize = ord(args.get("prize")) - 65 # Letter to index
                 basket_idx = args.get("basket") - 1
                 uncovered_values.append(prize * payoff_matrix.shape[1] + basket_idx)
                 revealed[prize, basket_idx] = True
                 cost += default_cost
 
                 # Prepare game details with the newly revealed box
-                new_game = format_game(payoff_matrix, revealed, weights, cost, total_earnings)
+                new_game = format_game(
+                    payoff_matrix,
+                    revealed,
+                    weights,
+                    cost,
+                    total_earnings,
+                    is_practice,
+                    n_game,
+                    n_game_total
+                )
                 args["reveal"] = new_game
 
             elif action == "select":
@@ -254,10 +373,19 @@ def roll_games(df, messages, model, is_practice):
                 selected_basket = args.get("basket")
                 if not is_practice:
                     total_earnings += net_earnings
-                accepted_default = (selected_basket == (nudge_index + 1))
+                chose_nudge = (selected_basket == (nudge_index + 1))
 
                 # Prepare game details with the earnings from the selected basket
-                new_game = format_game(payoff_matrix, revealed, weights, cost, total_earnings)
+                new_game = format_game(
+                    payoff_matrix,
+                    revealed,
+                    weights,
+                    cost,
+                    total_earnings,
+                    is_practice,
+                    n_game,
+                    n_game_total
+                )
                 new_game += f"\nYou won {prizes}, totaling {total_points} points."
                 new_game += f"\nTotal earnings (prize values minus reveal cost): ${net_earnings:.3f}"
                 args["select"] = new_game
@@ -283,7 +411,16 @@ def roll_games(df, messages, model, is_practice):
                     accepted_default = True
 
                     # Prepare game details with the earnings from the selected basket
-                    new_game = format_game(payoff_matrix, revealed, weights, cost, total_earnings)
+                    new_game = format_game(
+                        payoff_matrix,
+                        revealed,
+                        weights,
+                        cost,
+                        total_earnings,
+                        is_practice,
+                        n_game,
+                        n_game_total
+                    )
                     new_game += f"\nYou won {prizes}, totaling {total_points} points."
                     new_game += f"\nTotal earnings (prize values minus reveal cost): ${net_earnings:.3f}"
                     args["default"] = new_game
@@ -297,7 +434,16 @@ def roll_games(df, messages, model, is_practice):
                     )
 
                     # Prepare game details with the newly revealed box
-                    new_game = format_game(payoff_matrix, revealed, weights, cost, total_earnings)
+                    new_game = format_game(
+                        payoff_matrix,
+                        revealed,
+                        weights,
+                        cost,
+                        total_earnings,
+                        is_practice,
+                        n_game,
+                        n_game_total
+                    )
                     args["default"] = new_game
 
             logging.info(new_game)
@@ -342,10 +488,10 @@ def roll_games(df, messages, model, is_practice):
                         "uncovered_values": uncovered_values
                         }
                        )
-    return messages, results
+    return results
 
 
-def roll_quiz(messages, model):
+def roll_quiz(messages, model, temperature):
     # Initialize state
     tools = get_quiz_tools()
     pass_quiz = False
@@ -361,7 +507,10 @@ def roll_quiz(messages, model):
             model=model,
             messages=messages,
             tools=tools,
-            tool_choice="required" # Force model to use one or more tools
+            parallel_tool_calls=False,
+            tool_choice="required", # Force model to use one or more tools
+            temperature=temperature, # Range [0, 2]
+            max_tokens=300
         )
 
         # Parse response
@@ -435,6 +584,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--max-participants", type=int, default=MAX_PARTICIPANTS)
+    parser.add_argument("--temperature", type=float, default=TEMPERATURE)
     args = parser.parse_args()
 
     # Create a folder for logs if it doesn't exist
@@ -461,7 +611,7 @@ def main():
         openai.api_key = infile.read().strip()
 
     # Load data
-    df = pd.read_csv("../data/default_data.csv")
+    df = pd.read_csv("../data/default_data_exclusion.csv")
 
     # Iterate over participants
     all_results = []
@@ -472,17 +622,23 @@ def main():
                                                                   ascending=True)
 
         messages = [
-            {"role": "system", "content": exp1.NUDGE},
-            {"role": "user", "content": exp1.INITIAL_PROMPT},
+            # {"role": "system", "content": exp1.NUDGE},
+            {"role": "system", "content": exp1.INITIAL_PROMPT},
         ]
 
         # Quiz
-        messages = roll_quiz(messages, args.model)
+        messages = roll_quiz(messages, args.model, args.temperature)
 
         # Practice games
         messages.append({"role": "user", "content": exp1.PRACTICE_PROMPT})
         df_practice = df_participant[df_participant.is_practice]
-        messages, results = roll_games(df_practice, messages, args.model, is_practice=True)
+        results = roll_games(
+            df_practice,
+            messages,
+            args.model,
+            args.temperature,
+            is_practice=True
+        )
         if not os.path.exists(results_file):
             pd.DataFrame(results).to_csv(results_file, mode='w', header=True, index=False)
         else:
@@ -491,7 +647,13 @@ def main():
         # Test games
         messages.append({"role": "user", "content": exp1.TEST_PROMPT})
         df_test = df_participant[~df_participant.is_practice]
-        messages, results = roll_games(df_test, messages, args.model, is_practice=False)
+        results = roll_games(
+            df_test,
+            messages,
+            args.model,
+            args.temperature,
+            is_practice=False
+        )
         pd.DataFrame(results).to_csv(results_file, mode='a', header=False, index=False)
 
 if __name__ == "__main__":

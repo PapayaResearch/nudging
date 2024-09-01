@@ -27,97 +27,97 @@ NUDGE = ""
 INITIAL_PROMPT = """
 Welcome! In this task you will play a series of 32 choice games. In each game you will choose a basket. Each basket contains several prizes that you will get if you choose the basket. There are different types of prizes (A and B in the example below) and they are worth different amounts of points (23 and 7). You want to get the most points possible.
 
-Prize,Points,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
-A,23,,,,,
-B,7,,,,,
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 23 points,,,,,
+B: 7 points,,,,,
 Total reveal cost: 0 points
 
 The number of prizes in each basket varies. To see how many prizes of each type a basket has, you can reveal the corresponding box.
 
-Prize,Points,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
-A,23,,4,,,,
-B,7,,,,,,
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 23 points,,4,,,,
+B: 7 points,,,,,,
 Total reveal cost: 2 points
 
-You may reveal as many or as few of these boxes as you wish. This may help you decide which basket to choose. However, it costs **2 points** to reveal a box.
+You may reveal as many or as few of these boxes as you wish. This may help you decide which basket to choose. However, it costs 2 points to reveal a box.
 
-Prize,Points,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
-A,23,,4,,5,,
-B,7,,,3,,,
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 23 points,,4,,5,,
+B: 7 points,,,3,,,
 Total reveal cost: 6 points
 
 When you have finished revealing boxes, you can select a basket. In this example, let's imagine that you select Basket 4.
 
 In this case, you would win 5 A prizes (worth 23 points each) and 4 B prizes (worth 7 points each), for a total of 143 points. However, because you spent 6 points revealing three boxes, your net earnings on this problem would be 137 points.
 
-Prize,Points,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
-A,23,,4,,5,
-B,7,,,3,4,
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 23 points,,4,,5,
+B: 7 points,,,3,4,
 Total reveal cost: 6 points
 You won 5 A prizes, and 4 B prizes, totaling 143 points.
 
 Different problems will have different numbers of baskets and prizes.
 
-Prize,Points,Basket 1,Basket 2
-A,3,,
-B,6,,
-C,8,,
-D,10,,
-E,3,,
+Prizes,Basket 1,Basket 2
+A: 3 points,,
+B: 6 points,,
+C: 8 points,,
+D: 10 points,,
+E: 3 points,,
 Total reveal cost: 0 points
 
 Let's see the values that would be revealed for all of the boxes on this problem. Note that because each box costs 2 points to reveal, revealing all 10 of them would cost 20 points.
 
-Prize,Points,Basket 1,Basket 2
-A,3,5,7
-B,6,4,8
-C,8,4,6
-D,10,4,5
-E,3,6,5
+Prizes,Basket 1,Basket 2
+A: 3 points,5,7
+B: 6 points,4,8
+C: 8 points,4,6
+D: 10 points,4,5
+E: 3 points,6,5
 Total reveal cost: 20 points
 
-On average, each basket has **5 prizes** of each type, although the actual prize number can be anywhere from 0 to 10. Also note that different baskets can have different total numbers of prizes.
+On average, each basket has 5 prizes of each type, although the actual prize number can be anywhere from 0 to 10. Also note that different baskets can have different total numbers of prizes.
 
-Prize,Points,Basket 1,Basket 2
-A,3,5,7
-B,6,4,8
-C,8,4,6
-D,10,4,5
-E,3,6,5
+Prizes,Basket 1,Basket 2
+A: 3 points,5,7
+B: 6 points,4,8
+C: 8 points,4,6
+D: 10 points,4,5
+E: 3 points,6,5
 Total reveal cost: 20 points
 
-The points of the prizes will always add up to **30 points**. This means that on problems where there are more types of prizes, the prizes will be worth less.
+The points of the prizes will always add up to 30 points. This means that on problems where there are more types of prizes, the prizes will be worth less.
 
 On problems with two types of prizes, the prizes will be worth 15 points on average.
 
-Prize,Points,Basket 1,Basket 2
-A,6,,
-B,24,,
+Prizes,Basket 1,Basket 2
+A: 6 points,,
+B: 24 points,,
 Total reveal cost: 0 points
 
 And on problems with five types of prizes, the prizes will be worth 6 points on average.
 
-Prize,Points,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
-A,8,,,,,
-B,15,,,,,
-C,4,,,,,
-D,2,,,,,
-E,1,,,,,
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A: 8 points,,,,,
+B: 15 points,,,,,
+C: 4 points,,,,,
+D: 2 points,,,,,
+E: 1 points,,,,,
 Total reveal cost: 0 points
 
 On certain problems, you will have the option of choosing a recommended basket before revealing any boxes.
 
-The recommended basket is the **highest-paying basket if the prizes are worth equal numbers of points**.
+The recommended basket is the highest-paying basket if the prizes are worth equal numbers of points.
 
 Do you want to choose basket 3? It's pays the most when the prized are equally valuable. [Yes/No]
-Prize,Points,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
-A,12,,,,,
-B,18,,,,,
+Prizes,Basket 1,Basket 2,Basket 3,Basket 4,Basket 5
+A12 points,,,,,
+B: 18 points,,,,,
 Total reveal cost: 0 points
 
 After choosing a basket, you move on to a new problem. With each new game, the number of prizes in each basket will change. The value of the prizes will also change.
 
-You will earn real money for your choices. At the end of the experiment, the points you've earned will be paid as a bonus with **30 points equal to $0.01**.
+You will earn real money for your choices. At the end of the experiment, the points you've earned will be paid as a bonus with 30 points equal to $0.01.
 """
 
 QUIZ_PROMPT = """
