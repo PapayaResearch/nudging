@@ -29,13 +29,11 @@ import json
 import argparse
 import logging
 import os
-import tiktoken
 from datetime import datetime
 from tqdm.auto import tqdm
 
 MAX_PARTICIPANTS = 1
 TEMPERATURE = 0.2 # Default in the OpenAI API
-ENC = tiktoken.encoding_for_model("gpt-4o")
 
 def format_game(
         payoff_matrix,
@@ -227,35 +225,6 @@ def get_quiz_tools():
         }
     ]
 
-def num_tokens_from_functions(functions):
-    """Return the number of tokens used by a list of functions."""
-    num_tokens = 0
-    for function in functions:
-        function_tokens = len(ENC.encode(function['name']))
-        function_tokens += len(ENC.encode(function['description']))
-
-        if 'parameters' in function:
-            parameters = function['parameters']
-            if 'properties' in parameters:
-                for propertiesKey in parameters['properties']:
-                    function_tokens += len(ENC.encode(propertiesKey))
-                    v = parameters['properties'][propertiesKey]
-                    for field in v:
-                        if field == 'type':
-                            function_tokens += 2
-                            function_tokens += len(ENC.encode(v['type']))
-                        elif field == 'description':
-                            function_tokens += 2
-                            function_tokens += len(ENC.encode(v['description']))
-                        else:
-                            print(f"Warning: not supported field {field}")
-                function_tokens += 11
-
-        num_tokens += function_tokens
-
-    num_tokens += 12
-    return num_tokens
-
 def roll_games(df, initial_messages, model, temperature, is_practice):
     # Global state
     total_earnings = 1.3 # dollars
@@ -306,8 +275,6 @@ def roll_games(df, initial_messages, model, temperature, is_practice):
                 list(range(len(weights))), # prize indices
                 list(range(1, payoff_matrix.shape[1]+1)) # basket indices
             )
-            # TODO: Remove print
-            # print(num_tokens_from_functions([t.get("function") for t in tools]))
 
         # Start interaction with initial game
         logging.info(game)
@@ -317,8 +284,6 @@ def roll_games(df, initial_messages, model, temperature, is_practice):
         while selected_basket is None:
             # Note that if you force the model to call a function
             # then the subsequent finish_reason will be "stop" instead of being "tool_calls".
-            # TODO: Remove print
-            # print(sum([len(ENC.encode(m.get("content", ""))) for m in messages]))
             response = openai.chat.completions.create(
                 model=model,
                 messages=messages,
