@@ -33,7 +33,7 @@ from datetime import datetime
 from tqdm.auto import tqdm
 
 MAX_PARTICIPANTS = 1
-TEMPERATURE = 0.2 # Default in the OpenAI API
+TEMPERATURE = 0.2 # Default in the OpenAI API is 1.0
 
 def format_game(
         payoff_matrix,
