@@ -66,7 +66,6 @@ def format_game(
     game = f"Practice game {n_game} of {n_game_total}\n" if is_practice else f"Test game {n_game} of {n_game_total}\n"
     game += f"Total Earnings: ${total_earnings:.3f}\n"
     game += markdown
-    # "Total reveal cost" was understood as cost to reveal
     game += f"\nTotal accumulated cost: {cost} points"
     return game
 
@@ -82,17 +81,10 @@ def get_game_tools(prizes, baskets):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "prize_points": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer"
-                            },
-                            "description": "List of points for each prize.",
-                        },
-                        "reason": {
-                            "type": "string",
-                            "description": "Explain your reasoning, and the value of the selected prize.",
-                        },
+                        # "reason": {
+                        #     "type": "string",
+                        #     "description": "Explain your reasoning.",
+                        # },
                         "prize": {
                             "type": "string",
                             "enum": prizes,
@@ -104,7 +96,8 @@ def get_game_tools(prizes, baskets):
                             "description": "The basket's number corresponding to the box.",
                         },
                     },
-                    "required": ["prize_points", "reason", "prize", "basket"],
+                    # "required": ["reason", "prize", "basket"],
+                    "required": ["prize", "basket"],
                     "additionalProperties": False,
                 },
             }
@@ -114,36 +107,22 @@ def get_game_tools(prizes, baskets):
             "function": {
                 "name": "select",
                 "strict": True,
-                "description": "Call this whenever you choose to select a basket. Remember prizes apply to all baskets equally. The total value of the selected basket is calculated as the dot product of prize points by its corresponding box points (if revealed).",
+                "description": "Call this whenever you choose to select a basket.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "prize_points": {
-                            "type": "array",
-                            "items": {
-                                "type": "integer"
-                            },
-                            "description": "List of points for each prize.",
-                        },
-                        "box_points": {
-                            "type": "string",
-                            "description": "List of box points only for the selected basket.",
-                        },
-                        "dot_product": {
-                            "type": "string",
-                            "description": "Dot product of prize points by box points of the selected basket.",
-                        },
-                        "reason": {
-                            "type": "string",
-                            "description": "Explain your reasoning.",
-                        },
+                        # "reason": {
+                        #     "type": "string",
+                        #     "description": "Explain your reasoning.",
+                        # },
                         "basket": {
                             "type": "integer",
                             "enum": baskets,
                             "description": "The basket's number.",
                         },
                     },
-                    "required": ["prize_points", "box_points", "dot_product", "reason", "basket"],
+                    # "required": ["reason", "basket"],
+                    "required": ["basket"],
                     "additionalProperties": False,
                 },
             }
@@ -157,24 +136,21 @@ def get_nudge_tools():
             "function": {
                 "name": "default",
                 "strict": True,
-                "description": "Call this to accept or decline the default basket. Take into account the point difference between the largest and smallest prize. You should not accept if the point difference is large.",
+                "description": "Call this to accept or decline the default basket.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "point_difference": {
-                            "type": "integer",
-                            "description": "Point difference between the largest and smallest prize.",
-                        },
-                        "reason": {
-                            "type": "string",
-                            "description": "Explain your reasoning, mentioning the point difference and its magnitude.",
-                        },
+                        # "reason": {
+                        #     "type": "string",
+                        #     "description": "Explain your reasoning.",
+                        # },
                         "decision": {
                             "type": "boolean",
                             "description": "Accept or decline the default basket.",
                         },
                     },
-                    "required": ["point_difference", "reason", "decision"],
+                    # "required": ["reason", "decision"],
+                    "required": ["decision"],
                     "additionalProperties": False,
                 },
             }
@@ -461,6 +437,7 @@ def roll_quiz(messages, model, temperature):
     tools = get_quiz_tools()
     pass_quiz = False
     correct_answers = [1, 1, 3, 1, 2]
+    n_quiz = 1
 
     while not pass_quiz:
         # Ask questions
@@ -516,6 +493,9 @@ def roll_quiz(messages, model, temperature):
 
             # Update state
             args["quiz"] = "You didn't pass the quiz."
+            n_quiz += 1
+            if n_quiz > 3:
+                pass_quiz = True
 
             # Simulate the tool call response
             tool_response = {
