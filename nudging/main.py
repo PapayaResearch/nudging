@@ -29,11 +29,16 @@ import json
 import argparse
 import logging
 import os
+import random
+import string
 from datetime import datetime
 from tqdm.auto import tqdm
+from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall, Function
 
 MAX_PARTICIPANTS = 1
 TEMPERATURE = 0.2 # Default in the OpenAI API is 1.0
+N_LEARNING = 0
+SEED = 42
 
 def format_game(
         payoff_matrix,
@@ -201,15 +206,24 @@ def get_quiz_tools():
         }
     ]
 
-def roll_games(df, initial_messages, model, temperature, is_practice):
+def roll_games(
+        df,
+        initial_messages,
+        model,
+        temperature,
+        is_practice,
+        few_shot_learning=False
+):
     # Global state
     total_earnings = 1.3 # dollars
 
     # Iterate through all (practice and test) games
     results = []
     for idx, row in enumerate(df.itertuples()):
-        # Messages only in the context of the current game
-        messages = initial_messages.copy()
+        if (not few_shot_learning) or idx==0:
+            # Messages only in the context of the current game
+            messages = initial_messages.copy()
+
         # Game details
         payoff_matrix = np.array(ast.literal_eval(row.payoff_matrix))
         revealed = np.full(payoff_matrix.shape, False)
@@ -256,24 +270,52 @@ def roll_games(df, initial_messages, model, temperature, is_practice):
         logging.info(game)
         messages.append({"role": "user", "content": game})
 
+        if few_shot_learning:
+            chose_default = False
+            real_uncovered_values = ast.literal_eval(row.uncovered_values)
+
         # Interact until the end of game (i.e. basket is selected)
         while selected_basket is None:
             # Note that if you force the model to call a function
             # then the subsequent finish_reason will be "stop" instead of being "tool_calls".
-            response = openai.chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=tools,
-                parallel_tool_calls=False,
-                tool_choice="required", # Force model to use one or more tools
-                temperature=temperature, # Range [0, 2]
-                max_tokens=300,
-            )
 
-            # Parse response
-            tool_call = response.choices[0].message.tool_calls[0]
-            action = tool_call.function.name
-            args = json.loads(tool_call.function.arguments)
+            if not few_shot_learning:
+                response = openai.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    parallel_tool_calls=False,
+                    tool_choice="required", # Force model to use one or more tools
+                    temperature=temperature, # Range [0, 2]
+                    max_tokens=300,
+                )
+
+                # Parse response
+                tool_call = response.choices[0].message.tool_calls[0]
+                action = tool_call.function.name
+                args = json.loads(tool_call.function.arguments)
+            else:
+                # If few shot learning, ignore responses and simulate it
+                if row.trial_nudge == "default" and not chose_default:
+                    chose_default = True
+                    action = "default"
+                    args = {"decision": row.accepted_default}
+                elif real_uncovered_values:
+                    action = "reveal"
+                    flat_index = real_uncovered_values.pop(0)
+                    args = {"prize": chr((flat_index // payoff_matrix.shape[1]) + 65),
+                            "basket": flat_index % payoff_matrix.shape[1] + 1}
+                else:
+                    action = "select"
+                    args = {"basket": row.selected_option+1}
+
+                tool_call = ChatCompletionMessageToolCall(
+                    id="call_" + "".join([random.choice(string.ascii_letters + string.digits) for _ in range(24)]),
+                    type="function",
+                    function=Function(
+                        name=action, arguments=json.dumps(args)
+                    )
+                )
 
             if action == "reveal":
                 logging.info("REVEAL: {}".format(args))
@@ -412,24 +454,26 @@ def roll_games(df, initial_messages, model, temperature, is_practice):
             messages.append(function_call_result_message)
 
         # Save values
-        results.append({"is_practice": row.is_practice,
-                        "cost": row.cost,
-                        "payoff_matrix": row.payoff_matrix,
-                        "weights": row.weights,
-                        "trial_num": row.trial_num,
-                        "trial_nudge": row.trial_nudge,
-                        "nudge_index": row.nudge_index,
-                        "nudge_type": row.nudge_type,
-                        "participant_id": row.participant_id,
-                        "selected_option": selected_basket-1,
-                        "gross_earnings": gross_earnings,
-                        "net_earnings": net_earnings,
-                        "accepted_default": accepted_default,
-                        "chose_nudge": chose_nudge,
-                        "uncovered_values": uncovered_values
-                        }
-                       )
-    return results
+        if not few_shot_learning:
+            results.append(
+                {"is_practice": row.is_practice,
+                 "cost": row.cost,
+                 "payoff_matrix": row.payoff_matrix,
+                 "weights": row.weights,
+                 "trial_num": row.trial_num,
+                 "trial_nudge": row.trial_nudge,
+                 "nudge_index": row.nudge_index,
+                 "nudge_type": row.nudge_type,
+                 "participant_id": row.participant_id,
+                 "selected_option": selected_basket-1,
+                 "gross_earnings": gross_earnings,
+                 "net_earnings": net_earnings,
+                 "accepted_default": accepted_default,
+                 "chose_nudge": chose_nudge,
+                 "uncovered_values": uncovered_values
+                 }
+            )
+    return results, messages
 
 
 def roll_quiz(messages, model, temperature):
@@ -530,6 +574,8 @@ def main():
     parser.add_argument("--model", type=str, default="gpt-4o-mini")
     parser.add_argument("--max-participants", type=int, default=MAX_PARTICIPANTS)
     parser.add_argument("--temperature", type=float, default=TEMPERATURE)
+    parser.add_argument("--n-learning", type=int, default=N_LEARNING)
+    parser.add_argument("--seed", type=int, default=SEED)
     args = parser.parse_args()
 
     # Create a folder for logs if it doesn't exist
@@ -560,24 +606,55 @@ def main():
 
     # Iterate over participants
     all_results = []
-    for pid in tqdm(df.participant_id.unique()[:args.max_participants]):
+    participants = df.participant_id.unique()[:args.max_participants]
+
+    # Few-shot learning
+    if args.n_learning > 0:
+        df_few_shot = df[~df.participant_id.isin(participants) & ~df.is_practice].sample(frac=1).drop_duplicates(['weights'])
+        df_few_shot_default_true = df_few_shot[(df_few_shot.trial_nudge == "default") & df_few_shot.accepted_default].sample(
+            n=args.n_learning // 4,
+            random_state=args.seed
+        )
+        df_few_shot_default_false = df_few_shot[(df_few_shot.trial_nudge == "default") & ~df_few_shot.accepted_default & (df_few_shot.uncovered_values != "[]")].sample(
+            n=args.n_learning // 4,
+            random_state=args.seed
+        )
+        df_few_shot_control = df_few_shot[(df_few_shot.trial_nudge == "control") & (df_few_shot.uncovered_values != "[]")].sample(
+            n=args.n_learning // 2,
+            random_state=args.seed
+        )
+        df_few_shot = pd.concat([df_few_shot_default_true,
+                                 df_few_shot_default_false,
+                                 df_few_shot_control])
+
+    for pid in tqdm(participants):
         logging.info("PARTICIPANT: {}".format(pid))
 
         df_participant = df[df.participant_id == pid].sort_values(by="trial_num",
                                                                   ascending=True)
 
         messages = [
-            # {"role": "system", "content": exp1.NUDGE},
             {"role": "system", "content": exp1.INITIAL_PROMPT},
         ]
 
         # Quiz
         messages = roll_quiz(messages, args.model, args.temperature)
 
+        # Few-shot learning
+        if args.n_learning > 0:
+            _, messages = roll_games(
+                df_few_shot,
+                messages,
+                args.model,
+                args.temperature,
+                is_practice=False,
+                few_shot_learning=True
+            )
+
         # Practice games
         messages.append({"role": "user", "content": exp1.PRACTICE_PROMPT})
         df_practice = df_participant[df_participant.is_practice]
-        results = roll_games(
+        results, _ = roll_games(
             df_practice,
             messages,
             args.model,
@@ -592,7 +669,7 @@ def main():
         # Test games
         messages.append({"role": "user", "content": exp1.TEST_PROMPT})
         df_test = df_participant[~df_participant.is_practice]
-        results = roll_games(
+        results, _ = roll_games(
             df_test,
             messages,
             args.model,
