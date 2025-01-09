@@ -1,4 +1,4 @@
-# Copyright (c) 2024
+# Copyright (c) 2025
 # Manuel Cherep <mcherep@mit.edu>
 # Nikhil Singh <nsingh1@mit.edu>
 
@@ -20,661 +20,138 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import openai
 import pandas as pd
-import numpy as np
-import exp1
-import ast
-import json
-import argparse
 import logging
 import os
-import random
-import string
+import hydra
+import litellm
 from datetime import datetime
 from tqdm.auto import tqdm
-from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall, Function
+from omegaconf import OmegaConf
+from hydra.utils import instantiate
+from config import Config
+from utils.misc import print_config
 
-MAX_PARTICIPANTS = 1
-TEMPERATURE = 0.2 # Default in the OpenAI API is 1.0
-N_LEARNING = 0
-SEED = 42
+config_store = hydra.core.config_store.ConfigStore.instance()
+config_store.store(name="base_config", node=Config)
 
-def format_game(
-        payoff_matrix,
-        revealed,
-        weights,
-        cost,
-        total_earnings,
-        is_practice,
-        n_game,
-        n_game_total
-):
-    n_baskets = payoff_matrix.shape[1]
-    header = ["Prizes"] + [f"Basket {i+1}" for i in range(n_baskets)]
-    matrix = [header]
-    for idx, (row, row_idx) in enumerate(zip(payoff_matrix, revealed)):
-        matrix.append(
-            [chr(idx + 65) + ": " + str(weights[idx]) + " points"] + [str(value)
-                                                                      if flag else "?"
-                                                                      for value, flag in zip(row, row_idx)]
-        )
+@hydra.main(config_path="conf", config_name="config")
+def main(cfg: Config) -> None:
+    OmegaConf.resolve(cfg)
+    cfg_yaml = OmegaConf.to_yaml(cfg)
+    print_config(cfg)
 
-    markdown = pd.DataFrame(
-        matrix[1:], columns=matrix[0]
-    ).to_markdown(
-        index=False,
-        numalign="right",
-        colalign=("right",)
+    ##############################################
+    # Check compatibility with LiteLLM
+    ##############################################
+
+    assert litellm.supports_function_calling(model=cfg.general.model) == True
+
+    ##############################################
+    # Create results and log directories
+    ##############################################
+
+    # TODO: Filter original data to exclude rejected participants
+
+    current_date = datetime.now().strftime("%a-%b-%d-%Y_%I-%M%p")
+
+    base_dir = os.path.join(
+        cfg.nudge.name,
+        cfg.provider.name,
+        cfg.general.model
     )
 
-    game = f"Practice game {n_game} of {n_game_total}\n" if is_practice else f"Test game {n_game} of {n_game_total}\n"
-    game += f"Total Earnings: ${total_earnings:.3f}\n"
-    game += markdown
-    game += f"\nTotal accumulated cost: {cost} points"
-    return game
+    results_dir = os.path.join(cfg.logging.results_dir, base_dir, current_date)
+    results_file = os.path.join(results_dir, current_date + ".csv")
 
-def get_game_tools(prizes, baskets):
-    prizes = [chr(65 + i) for i in prizes] # Letter instead of indices
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "reveal",
-                "strict": True,
-                "description": "Call this whenever you choose to reveal the value of a box.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        # "reason": {
-                        #     "type": "string",
-                        #     "description": "Explain your reasoning.",
-                        # },
-                        "prize": {
-                            "type": "string",
-                            "enum": prizes,
-                            "description": "The prize's letter corresponding to the box.",
-                        },
-                        "basket": {
-                            "type": "integer",
-                            "enum": baskets,
-                            "description": "The basket's number corresponding to the box.",
-                        },
-                    },
-                    # "required": ["reason", "prize", "basket"],
-                    "required": ["prize", "basket"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "select",
-                "strict": True,
-                "description": "Call this whenever you choose to select a basket.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        # "reason": {
-                        #     "type": "string",
-                        #     "description": "Explain your reasoning.",
-                        # },
-                        "basket": {
-                            "type": "integer",
-                            "enum": baskets,
-                            "description": "The basket's number.",
-                        },
-                    },
-                    # "required": ["reason", "basket"],
-                    "required": ["basket"],
-                    "additionalProperties": False,
-                },
-            }
-        }
-    ]
+    log_dir = os.path.join(cfg.logging.log_dir, base_dir)
+    log_file = os.path.join(log_dir, current_date + ".log")
 
-def get_nudge_tools():
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "default",
-                "strict": True,
-                "description": "Call this to accept or decline the default basket.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        # "reason": {
-                        #     "type": "string",
-                        #     "description": "Explain your reasoning.",
-                        # },
-                        "decision": {
-                            "type": "boolean",
-                            "description": "Accept or decline the default basket.",
-                        },
-                    },
-                    # "required": ["reason", "decision"],
-                    "required": ["decision"],
-                    "additionalProperties": False,
-                },
-            }
-        }
-    ]
+    os.makedirs(log_dir, exist_ok=True)
+    os.makedirs(results_dir, exist_ok=True)
 
-def get_quiz_tools():
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "quiz",
-                "strict": True,
-                "description": "Call this to answer the quiz.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "question_1": {
-                            "type": "integer",
-                            "enum": [0, 1, 2],
-                            "description": "Answer for question 1 with the right choice's index.",
-                        },
-                        "question_2": {
-                            "type": "integer",
-                            "enum": [0, 1, 2],
-                            "description": "Answer for question 2 with the right choice's index.",
-                        },
-                        "question_3": {
-                            "type": "integer",
-                            "enum": [0, 1, 2, 3],
-                            "description": "Answer for question 3 with the right choice's index.",
-                        },
-                        "question_4": {
-                            "type": "integer",
-                            "enum": [0, 1, 2],
-                            "description": "Answer for question 4 with the right choice's index.",
-                        },
-                        "question_5": {
-                            "type": "integer",
-                            "enum": [0, 1, 2],
-                            "description": "Answer for question 5 with the right choice's index.",
-                        },
-                    },
-                    "required": ["question_1", "question_2", "question_3", "question_4", "question_5"],
-                    "additionalProperties": False,
-                },
-            }
-        }
-    ]
+    with open(os.path.join(results_dir, "cfg.yaml"), "w") as outfile:
+        outfile.write(cfg_yaml)
+    with open(os.path.join(log_dir, "cfg.yaml"), "w") as outfile:
+        outfile.write(cfg_yaml)
 
-def roll_games(
-        df,
-        initial_messages,
-        model,
-        temperature,
-        is_practice,
-        few_shot_learning=False
-):
-    # Global state
-    total_earnings = 1.3 # dollars
-
-    # Iterate through all (practice and test) games
-    results = []
-    for idx, row in enumerate(df.itertuples()):
-        if (not few_shot_learning) or idx==0:
-            # Messages only in the context of the current game
-            messages = initial_messages.copy()
-
-        # Game details
-        payoff_matrix = np.array(ast.literal_eval(row.payoff_matrix))
-        revealed = np.full(payoff_matrix.shape, False)
-        weights = np.array(ast.literal_eval(row.weights))
-        nudge = row.trial_nudge == "default"
-        nudge_index = int(row.nudge_index)
-        default_cost = row.cost
-        n_game_total = df.shape[0]
-        n_game = (idx % n_game_total) + 1
-
-        # Game state
-        selected_basket = None
-        uncovered_values = []
-        cost = 0
-        net_earnings = 0
-        gross_earnings = 0
-        accepted_default = False
-        chose_nudge = False
-
-        # Format initial game
-        game = format_game(
-            payoff_matrix,
-            revealed,
-            weights,
-            cost,
-            total_earnings,
-            is_practice,
-            n_game,
-            n_game_total
-        )
-        if nudge:
-            game = \
-                f"\nDo you want to choose basket {nudge_index + 1}?" + \
-                f"\nIt's pays the most when the prizes are equally valuable.\n" + \
-                game
-            tools = get_nudge_tools()
-        else:
-            tools = get_game_tools(
-                list(range(len(weights))), # prize indices
-                list(range(1, payoff_matrix.shape[1]+1)) # basket indices
-            )
-
-        # Start interaction with initial game
-        logging.info(game)
-        messages.append({"role": "user", "content": game})
-
-        if few_shot_learning:
-            chose_default = False
-            real_uncovered_values = ast.literal_eval(row.uncovered_values)
-
-        # Interact until the end of game (i.e. basket is selected)
-        while selected_basket is None:
-            # Note that if you force the model to call a function
-            # then the subsequent finish_reason will be "stop" instead of being "tool_calls".
-
-            if not few_shot_learning:
-                response = openai.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    tools=tools,
-                    parallel_tool_calls=False,
-                    tool_choice="required", # Force model to use one or more tools
-                    temperature=temperature, # Range [0, 2]
-                    max_tokens=300,
-                )
-
-                # Parse response
-                tool_call = response.choices[0].message.tool_calls[0]
-                action = tool_call.function.name
-                args = json.loads(tool_call.function.arguments)
-            else:
-                # If few shot learning, ignore responses and simulate it
-                if row.trial_nudge == "default" and not chose_default:
-                    chose_default = True
-                    action = "default"
-                    args = {"decision": row.accepted_default}
-                elif real_uncovered_values:
-                    action = "reveal"
-                    flat_index = real_uncovered_values.pop(0)
-                    args = {"prize": chr((flat_index // payoff_matrix.shape[1]) + 65),
-                            "basket": flat_index % payoff_matrix.shape[1] + 1}
-                else:
-                    action = "select"
-                    args = {"basket": row.selected_option+1}
-
-                tool_call = ChatCompletionMessageToolCall(
-                    id="call_" + "".join([random.choice(string.ascii_letters + string.digits) for _ in range(24)]),
-                    type="function",
-                    function=Function(
-                        name=action, arguments=json.dumps(args)
-                    )
-                )
-
-            if action == "reveal":
-                logging.info("REVEAL: {}".format(args))
-
-                # Update state
-                prize = ord(args.get("prize")) - 65 # Letter to index
-                basket_idx = args.get("basket") - 1
-                uncovered_values.append(prize * payoff_matrix.shape[1] + basket_idx)
-                revealed[prize, basket_idx] = True
-                cost += default_cost
-
-                # Prepare game details with the newly revealed box
-                new_game = format_game(
-                    payoff_matrix,
-                    revealed,
-                    weights,
-                    cost,
-                    total_earnings,
-                    is_practice,
-                    n_game,
-                    n_game_total
-                )
-                args["reveal"] = new_game
-
-            elif action == "select":
-                logging.info("SELECT: {}".format(args))
-
-                # Calculate game results
-                points = payoff_matrix[:, args.get("basket")-1]
-                total_points = np.sum(points * weights)
-                gross_earnings = total_points * 0.00033333333 # 30 points = $0.01
-                net_earnings = (total_points - cost) * 0.00033333333 # 30 points = $0.01
-                prizes_list = [f"{v} {chr(k + 65)} prizes"
-                               for k,v in zip(range(len(weights)), points)]
-                prizes = ", ".join(prizes_list[:-1]) + ", and " + prizes_list[-1]
-
-                # Update state
-                selected_basket = args.get("basket")
-                if not is_practice:
-                    total_earnings += net_earnings
-                chose_nudge = (selected_basket == (nudge_index + 1))
-
-                # Prepare game details with the earnings from the selected basket
-                new_game = format_game(
-                    payoff_matrix,
-                    revealed,
-                    weights,
-                    cost,
-                    total_earnings,
-                    is_practice,
-                    n_game,
-                    n_game_total
-                )
-                new_game += f"\nYou won {prizes}, totaling {total_points} points."
-                new_game += f"\nTotal earnings (prize values minus reveal cost): ${net_earnings:.3f}"
-                args["select"] = new_game
-
-            elif action == "default":
-                logging.info("DEFAULT: {}".format(args))
-
-                if args.get("decision"):
-                    # Calculate game results
-                    points = payoff_matrix[:, nudge_index]
-                    total_points = np.sum(points * weights)
-                    gross_earnings = total_points * 0.00033333333 # 30 points = $0.01
-                    net_earnings = (total_points - cost) * 0.00033333333 # 30 points = $0.01
-                    prizes_list = [f"{v} {chr(k + 65)} prizes"
-                                   for k,v in zip(range(len(weights)), points)]
-                    prizes = ", ".join(prizes_list[:-1]) + ", and " + prizes_list[-1]
-
-                    # Update state
-                    selected_basket = nudge_index + 1
-                    if not is_practice:
-                        total_earnings += net_earnings
-                    chose_nudge = True
-                    accepted_default = True
-
-                    # Prepare game details with the earnings from the selected basket
-                    new_game = format_game(
-                        payoff_matrix,
-                        revealed,
-                        weights,
-                        cost,
-                        total_earnings,
-                        is_practice,
-                        n_game,
-                        n_game_total
-                    )
-                    new_game += f"\nYou won {prizes}, totaling {total_points} points."
-                    new_game += f"\nTotal earnings (prize values minus reveal cost): ${net_earnings:.3f}"
-                    args["default"] = new_game
-
-
-                else:
-                    # Update state
-                    tools = get_game_tools(
-                        list(range(len(weights))), # prize indices
-                        list(range(1, payoff_matrix.shape[1]+1)) # basket indices
-                    )
-
-                    # Prepare game details with the newly revealed box
-                    new_game = format_game(
-                        payoff_matrix,
-                        revealed,
-                        weights,
-                        cost,
-                        total_earnings,
-                        is_practice,
-                        n_game,
-                        n_game_total
-                    )
-                    args["default"] = new_game
-
-            logging.info(new_game)
-
-            # Simulate the tool call response
-            tool_response = {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "type": "function",
-                        "function": tool_call.function,
-                        "id": tool_call.id
-                    }
-                ]
-            }
-
-            # Create a message containing the result of the function call
-            function_call_result_message = {
-                "role": "tool",
-                "content": json.dumps(args),
-                "tool_call_id": tool_call.id
-            }
-
-            messages.append(tool_response)
-            messages.append(function_call_result_message)
-
-        # Save values
-        if not few_shot_learning:
-            results.append(
-                {"is_practice": row.is_practice,
-                 "cost": row.cost,
-                 "payoff_matrix": row.payoff_matrix,
-                 "weights": row.weights,
-                 "trial_num": row.trial_num,
-                 "trial_nudge": row.trial_nudge,
-                 "nudge_index": row.nudge_index,
-                 "nudge_type": row.nudge_type,
-                 "participant_id": row.participant_id,
-                 "selected_option": selected_basket-1,
-                 "gross_earnings": gross_earnings,
-                 "net_earnings": net_earnings,
-                 "accepted_default": accepted_default,
-                 "chose_nudge": chose_nudge,
-                 "uncovered_values": uncovered_values
-                 }
-            )
-    return results, messages
-
-
-def roll_quiz(messages, model, temperature):
-    # Initialize state
-    tools = get_quiz_tools()
-    pass_quiz = False
-    correct_answers = [1, 1, 3, 1, 2]
-    n_quiz = 1
-
-    while not pass_quiz:
-        # Ask questions
-        messages.append({"role": "user", "content": exp1.QUIZ_PROMPT})
-
-        # Note that if you force the model to call a function
-        # then the subsequent finish_reason will be "stop" instead of being "tool_calls".
-        response = openai.chat.completions.create(
-            model=model,
-            messages=messages,
-            tools=tools,
-            parallel_tool_calls=False,
-            tool_choice="required", # Force model to use one or more tools
-            temperature=temperature, # Range [0, 2]
-            max_tokens=300
-        )
-
-        # Parse response
-        tool_call = response.choices[0].message.tool_calls[0]
-        args = json.loads(tool_call.function.arguments)
-        answers = [args.get(f"question_{i}") for i in range (1, 6)]
-
-        if answers == correct_answers:
-            logging.info("CORRECT QUIZ: {}".format(args))
-
-            # Update state
-            pass_quiz = True
-            args["quiz"] = "You passed the quiz!"
-
-            # Simulate the tool call response
-            tool_response = {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "type": "function",
-                        "function": tool_call.function,
-                        "id": tool_call.id
-                    }
-                ]
-            }
-
-            # Create a message containing the result of the function call
-            function_call_result_message = {
-                "role": "tool",
-                "content": json.dumps(args),
-                "tool_call_id": tool_call.id
-            }
-
-            messages.append(tool_response)
-            messages.append(function_call_result_message)
-        else:
-            logging.info("INCORRECT QUIZ: {}".format(args))
-
-            # Update state
-            args["quiz"] = "You didn't pass the quiz."
-            n_quiz += 1
-            if n_quiz > 3:
-                pass_quiz = True
-
-            # Simulate the tool call response
-            tool_response = {
-                "role": "assistant",
-                "tool_calls": [
-                    {
-                        "type": "function",
-                        "function": tool_call.function,
-                        "id": tool_call.id
-                    }
-                ]
-            }
-
-            # Create a message containing the result of the function call
-            function_call_result_message = {
-                "role": "tool",
-                "content": json.dumps(args),
-                "tool_call_id": tool_call.id
-            }
-
-            messages.append(tool_response)
-            messages.append(function_call_result_message)
-
-            # Help message for the quiz
-            messages.append({"role": "user", "content": exp1.INCORRECT_QUIZ_PROMPT})
-
-    return messages
-
-def main():
-    # Parse arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="gpt-4o-mini")
-    parser.add_argument("--max-participants", type=int, default=MAX_PARTICIPANTS)
-    parser.add_argument("--temperature", type=float, default=TEMPERATURE)
-    parser.add_argument("--n-learning", type=int, default=N_LEARNING)
-    parser.add_argument("--seed", type=int, default=SEED)
-    args = parser.parse_args()
-
-    # Create a folder for logs if it doesn't exist
-    log_folder = "../logs"
-    os.makedirs(log_folder, exist_ok=True)
-
-    # Create a log file with a datetime-based name
-    date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_filename = date + ".log"
-    log_filepath = os.path.join(log_folder, log_filename)
-
-    # Set up logging configuration
     logging.basicConfig(
-        filename=log_filepath,
+        filename=log_file,
         level=logging.INFO,  # You can change this to DEBUG, ERROR, etc.
         format="%(asctime)s - %(levelname)s - %(message)s"
     )
 
-    # Result CSV file
-    results_file = "../results/" + date + ".csv"
+    ##############################################
+    # Set up provider
+    ##############################################
 
-    # Set up OpenAI API key
-    with open("../oai.txt") as infile:
-        openai.api_key = infile.read().strip()
+    with open(cfg.provider.key) as infile:
+        os.environ[cfg.provider.key_name] = infile.read().strip()
 
-    # Load data
-    df = pd.read_csv("../data/default_data_exclusion.csv")
+    ##############################################
+    # Instantiate nudge
+    ##############################################
 
-    # Iterate over participants
-    all_results = []
-    participants = df.participant_id.unique()[:args.max_participants]
+    nudge = instantiate(cfg.nudge.nudge)
+
+    ##############################################
+    # Run simulation
+    ##############################################
+
+    participants = nudge.data.participant_id.unique()[cfg.general.offset:cfg.general.participants]
 
     # Few-shot learning
-    if args.n_learning > 0:
-        df_few_shot = df[~df.participant_id.isin(participants) & ~df.is_practice].sample(frac=1).drop_duplicates(['weights'])
-        df_few_shot_default_true = df_few_shot[(df_few_shot.trial_nudge == "default") & df_few_shot.accepted_default].sample(
-            n=args.n_learning // 4,
-            random_state=args.seed
+    if cfg.general.fewshot > 0:
+        df_fewshot = nudge.get_fewshot_data(
+            participants,
+            cfg.general.fewshot
         )
-        df_few_shot_default_false = df_few_shot[(df_few_shot.trial_nudge == "default") & ~df_few_shot.accepted_default & (df_few_shot.uncovered_values != "[]")].sample(
-            n=args.n_learning // 4,
-            random_state=args.seed
+        _, fewshot_messages = nudge.run_trials(
+            df_fewshot,
+            messages,
+            is_practice=False,
+            few_shot_learning=True
         )
-        df_few_shot_control = df_few_shot[(df_few_shot.trial_nudge == "control") & (df_few_shot.uncovered_values != "[]")].sample(
-            n=args.n_learning // 2,
-            random_state=args.seed
-        )
-        df_few_shot = pd.concat([df_few_shot_default_true,
-                                 df_few_shot_default_false,
-                                 df_few_shot_control])
 
     for pid in tqdm(participants):
         logging.info("PARTICIPANT: {}".format(pid))
 
-        df_participant = df[df.participant_id == pid].sort_values(by="trial_num",
-                                                                  ascending=True)
+        # TODO: CoT prompt?
 
         messages = [
-            {"role": "system", "content": exp1.INITIAL_PROMPT},
+            {"role": "system", "content": nudge.initial_prompt},
         ]
 
         # Quiz
-        messages = roll_quiz(messages, args.model, args.temperature)
+        messages = nudge.run_quiz(messages)
 
-        # Few-shot learning
-        if args.n_learning > 0:
-            _, messages = roll_games(
-                df_few_shot,
-                messages,
-                args.model,
-                args.temperature,
-                is_practice=False,
-                few_shot_learning=True
-            )
+        # Few-shot examples
+        if cfg.general.fewshot > 0:
+            messages += fewshot_messages
 
         # Practice games
-        messages.append({"role": "user", "content": exp1.PRACTICE_PROMPT})
-        df_practice = df_participant[df_participant.is_practice]
-        results, _ = roll_games(
-            df_practice,
+        messages.append({"role": "user", "content": nudge.practice_prompt})
+        results, practice_messages = nudge.run_trials(
+            nudge.get_practice_data(pid),
             messages,
-            args.model,
-            args.temperature,
-            is_practice=True
+            is_practice=True,
+            fewshot_learning=False
         )
+        if cfg.general.include_practice:
+            messages += practice_messages
+
         if not os.path.exists(results_file):
             pd.DataFrame(results).to_csv(results_file, mode='w', header=True, index=False)
         else:
             pd.DataFrame(results).to_csv(results_file, mode='a', header=False, index=False)
 
         # Test games
-        messages.append({"role": "user", "content": exp1.TEST_PROMPT})
-        df_test = df_participant[~df_participant.is_practice]
-        results, _ = roll_games(
-            df_test,
+        messages.append({"role": "user", "content": nudge.test_prompt})
+        results, _ = nudge.run_trials(
+            nudge.get_test_data(pid),
             messages,
-            args.model,
-            args.temperature,
-            is_practice=False
+            is_practice=False,
+            fewshot_learning=False
         )
         pd.DataFrame(results).to_csv(results_file, mode='a', header=False, index=False)
 

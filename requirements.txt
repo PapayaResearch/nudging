@@ -1,3 +1,5 @@
+litellm
 pandas
-openai
 tqdm
+rich
+hydra-core
