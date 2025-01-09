@@ -1,7 +1,8 @@
 # Custom
 oai.txt
-cl.txt
 results
+logs
+outputs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
