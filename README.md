@@ -1,4 +1,4 @@
-# Nudging Sensitivity in LLM Decision-Making
+# Nudge Sensitivity in LLM Decision-Making
 
 Code for the **NeurIPS Behavioral Machine Learning 2024** spotlight paper **[Superficial Alignment, Subtle Divergence, and Nudge Sensitivity in LLM Decision-Making](https://openreview.net/forum?id=chbdsWgjS6)**. For more details about the oirignal setup, we refer to [Optimal nudging for cognitively bounded agents](https://psycnet.apa.org/record/2024-21499-001).
 
