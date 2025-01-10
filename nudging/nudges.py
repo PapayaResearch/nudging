@@ -806,7 +806,6 @@ class Highlight(MultiAttribute):
             cost = 0
             net_earnings = 0
             gross_earnings = 0
-            chose_nudge = False
 
             # Format initial game
             rendered_header = render_header(total_earnings, is_practice, n_trial, n_total_trials)
@@ -893,7 +892,6 @@ class Highlight(MultiAttribute):
                     selected_basket = args.get("basket")
                     if not is_practice:
                         total_earnings += net_earnings
-                    chose_nudge = (selected_basket == (nudge_index + 1))
                     # Reveal the whole basket since it was selected
                     revealed[:, (args.get("basket")-1)] = True
 
@@ -935,7 +933,6 @@ class Highlight(MultiAttribute):
                         "selected_option": selected_basket-1,
                         "gross_earnings": gross_earnings,
                         "net_earnings": net_earnings,
-                        "chose_nudge": chose_nudge,
                         "uncovered_values": uncovered_values
                      }
                 )
