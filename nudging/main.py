@@ -51,8 +51,6 @@ def main(cfg: Config) -> None:
     # Create results and log directories
     ##############################################
 
-    # TODO: Filter original data to exclude rejected participants
-
     current_date = datetime.now().strftime("%a-%b-%d-%Y_%I-%M%p")
 
     base_dir = os.path.join(
