@@ -114,8 +114,6 @@ def main(cfg: Config) -> None:
     for pid in tqdm(participants):
         logging.info("PARTICIPANT: {}".format(pid))
 
-        # TODO: CoT prompt?
-
         messages = [
             {"role": "system", "content": nudge.initial_prompt},
         ]
@@ -126,6 +124,10 @@ def main(cfg: Config) -> None:
         # Few-shot examples
         if cfg.general.fewshot > 0:
             messages += fewshot_messages
+
+        # Chain-of-thought
+        if cfg.general.cot:
+            messages.append({"role": "user", "content": "Let's think step by step"})
 
         # Practice games
         messages.append({"role": "user", "content": nudge.practice_prompt})

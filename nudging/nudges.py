@@ -493,8 +493,39 @@ class Suggestion(MultiAttribute):
             participants: list,
             n_examples: int
     ):
-        # TODO
-        pass
+        # Remove participants already selected and practice trials
+        df = self.data[~self.data.participant_id.isin(participants)
+                       & ~self.data.is_practice]
+        # Shuffle and drop duplicates
+        df = df.sample(
+            frac=1,
+            random_state=self.seed
+        ).drop_duplicates(['weights'])
+        # Select default trials that were accepted and sample a subset
+        df_pre = df[(df.trial_nudge == "pre-supersize")
+                    & (df.uncovered_values != "[]")]
+        df_ore = df_pre.sample(
+            n=n_examples // 4,
+            random_state=self.seed
+        )
+        # Select default trials that were rejected, revealed at least one cell, and sample a subset
+        df_post = df[(df.trial_nudge == "post-supersize")
+                     & (df.uncovered_values != "[]")]
+        df_post = df_post.sample(
+            n=n_examples // 4,
+            random_state=self.seed
+        )
+        # Select control trials, revealed at least one cell, and sample a subset
+        df_control = df[(df.trial_nudge == "control")
+                        & (df.uncovered_values != "[]")]
+        df_control = df_control.sample(
+            n=n_examples // 2,
+            random_state=self.seed
+        )
+        # Final dataframe of examples
+        return pd.concat([df_pre,
+                          df_post,
+                          df_control])
 
     def render_nudge(self, value, prize_idx, basket=None):
         prize = chr(prize_idx + 65)
@@ -502,6 +533,21 @@ class Suggestion(MultiAttribute):
             return f"We found another basket with {value} {prize} prizes!"
         else:
             return f"Consider basket {basket} - it has {value} {prize} prizes!"
+
+    def get_best_basket(self, payoff_matrix, weights, human_uncovered_values):
+        # Replicate payoff matrix masking with zeros the values that are not revealed
+        M_flat = payoff_matrix.flatten()
+        mask = np.zeros_like(M_flat)
+        mask[human_uncovered_values] = 1
+        result = (M_flat * mask).reshape(payoff_matrix.shape)
+        basket_points_revealed = weights @ result[:, :-1] # revealed points per basket (ignoring last)
+        # Selected basket is best according to information revealed or random by tiebreak
+        selected_basket_idx = np.random.choice(
+            np.flatnonzero(
+                basket_points_revealed == basket_points_revealed.max()
+            )
+        )
+        return selected_basket_idx+1
 
     def run_trials(self, df, initial_messages, is_practice, fewshot_learning):
         # Global state
@@ -522,9 +568,12 @@ class Suggestion(MultiAttribute):
             nudge = row.trial_nudge # control, post-supersize, or pre-supersize
             nudge_index = int(row.nudge_index)
             og_baskets = int(row.og_baskets)
+            shown_baskets = int(row.shown_baskets)
+            selected_option = int(row.selected_option)
             reveal_cost = row.cost
             n_total_trials = df.shape[0]
             n_trial = (idx % n_total_trials) + 1
+            human_uncovered_values_original = ast.literal_eval(row.uncovered_values)
             human_uncovered_values = ast.literal_eval(row.uncovered_values)
 
             # Game state
@@ -576,12 +625,18 @@ class Suggestion(MultiAttribute):
                     rendered_cost
                 )
 
-            # TODO: Baskets should be limited to shown_baskets for control and pre-supersize;
+            # Baskets should be limited to shown_baskets for control and pre-supersize;
             # and og_baskets or shown_baskets at different stages for post-supersize
-            tools = self.get_control_tools(
-                list(range(len(weights))), # prize indices
-                list(range(1, payoff_matrix.shape[1]+1)) # basket indices
-            )
+            if nudge == "control" or nudge == "pre-supersize":
+                tools = self.get_control_tools(
+                    list(range(len(weights))), # prize indices
+                    list(range(1, shown_baskets+1)) # basket indices
+                )
+            elif nudge == "post-supersize":
+                tools = self.get_control_tools(
+                    list(range(len(weights))), # prize indices
+                    list(range(1, og_baskets+1)) # basket indices
+                )
 
             # Start interaction with initial game
             logging.info(game)
@@ -599,10 +654,46 @@ class Suggestion(MultiAttribute):
                 else:
                     # If few shot learning, ignore responses and simulate it
                     if nudge == "post-supersize":
-                        # TODO:
-                        # 1. Get top human uncovered index
-                        # 2. If it's not in basket 6 then treat as reveal
-                        pass
+                        if human_uncovered_values:
+                            flat_index = human_uncovered_values[0]
+                            prize = chr((flat_index // payoff_matrix.shape[1]) + 65)
+                            basket = flat_index % payoff_matrix.shape[1] + 1
+
+                            if (basket != (nudge_index+1)) or first_selected_basket is not None:
+                                # Reveal
+                                human_uncovered_values.pop(0)
+                                action = "reveal"
+                                args = {"prize": prize,
+                                        "basket": basket}
+                            else:
+                                # Basket selected after post suggestion happened, so
+                                # a basket had to be selected before this reveal
+                                action = "select"
+                                if selected_option != nudge_index:
+                                    # (a) If selected option is not the nudge, then assume that basket was selected both times
+                                    args = {"basket": selected_option+1}
+                                else:
+                                    # (b) If selected option is nudge, then first basket is the best (known) one
+                                    best_basket = self.get_best_basket(
+                                        payoff_matrix,
+                                        weights,
+                                        human_uncovered_values_original
+                                    )
+                                    args = {"basket": best_basket}
+                        else:
+                            action = "select"
+                            if (selected_option != nudge_index) or (first_selected_basket is not None):
+                                # If selected option is not the nudge, then assume that basket was selected both times
+                                # If this is the second time selecting, then selected option is the final choice
+                                args = {"basket": selected_option+1}
+                            else:
+                                # Select the best basket according to the information
+                                best_basket = self.get_best_basket(
+                                    payoff_matrix,
+                                    weights,
+                                    human_uncovered_values_original
+                                )
+                                args = {"basket": best_basket}
                     else:
                         if human_uncovered_values:
                             action = "reveal"
@@ -611,7 +702,7 @@ class Suggestion(MultiAttribute):
                                     "basket": flat_index % payoff_matrix.shape[1] + 1}
                         else:
                             action = "select"
-                            args = {"basket": row.selected_option+1}
+                            args = {"basket": selected_option+1}
 
                     tool_call = ChatCompletionMessageToolCall(
                         id="call_" + "".join([random.choice(string.ascii_letters + string.digits) for _ in range(24)]),
@@ -670,6 +761,12 @@ class Suggestion(MultiAttribute):
                             rendered_result = render_result(weights, points, total_points, net_earnings)
 
                             new_game = render(rendered_header, rendered_nudge, rendered_table, rendered_cost)
+
+                            # Update tools to be able to select the new basket
+                            tools = self.get_control_tools(
+                                list(range(len(weights))), # prize indices
+                                list(range(1, shown_baskets+1)) # basket indices
+                            )
                         else:
                             selected_basket = args.get("basket")
 
@@ -757,12 +854,14 @@ class Highlight(MultiAttribute):
             random_state=self.seed
         ).drop_duplicates(['weights'])
         # Select control trials (i.e. no highlight)
-        df_control = df[df.is_control].sample(
+        df_control = df[df.is_control
+                        & (df.uncovered_values != "[]")].sample(
             n=n_examples // 2,
             random_state=self.seed
         )
         # Select control trials (i.e. no highlight)
-        df_highlight = df[~df.is_control].sample(
+        df_highlight = df[~df.is_control
+                          & (df.uncovered_values != "[]")].sample(
             n=n_examples // 2,
             random_state=self.seed
         )
