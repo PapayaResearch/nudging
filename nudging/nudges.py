@@ -501,14 +501,14 @@ class Suggestion(MultiAttribute):
             frac=1,
             random_state=self.seed
         ).drop_duplicates(['weights'])
-        # Select default trials that were accepted and sample a subset
+        # Select pre-supersize trials, revealed at least one cell, and sample a subset
         df_pre = df[(df.trial_nudge == "pre-supersize")
                     & (df.uncovered_values != "[]")]
         df_ore = df_pre.sample(
             n=n_examples // 4,
             random_state=self.seed
         )
-        # Select default trials that were rejected, revealed at least one cell, and sample a subset
+        # Select post-supersize trials, revealed at least one cell, and sample a subset
         df_post = df[(df.trial_nudge == "post-supersize")
                      & (df.uncovered_values != "[]")]
         df_post = df_post.sample(
@@ -1033,6 +1033,152 @@ class Highlight(MultiAttribute):
                         "gross_earnings": gross_earnings,
                         "net_earnings": net_earnings,
                         "uncovered_values": uncovered_values
+                     }
+                )
+        return results, messages
+
+
+class Optimal(MultiAttribute):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get_fewshot_data(
+            self,
+            participants: list,
+            n_examples: int
+    ):
+        raise NotImplementedError("Few shot learning is not supported for this nudge")
+
+    def run_trials(self, df, initial_messages, is_practice, fewshot_learning):
+        # Global state
+        total_earnings = 1.3 # dollars
+
+        # Iterate through all (practice and test) games
+        results = []
+        for idx, row in enumerate(df.itertuples()):
+            if (not fewshot_learning) or idx==0:
+                # For regular games, messages only in the context
+                # of the current game. For few-shot learning, all messages.
+                messages = initial_messages.copy()
+
+            # Game details
+            payoff_matrix = np.array(ast.literal_eval(row.payoff_matrix))
+            cost_matrix = np.array(ast.literal_eval(row.cost_matrix))
+            revealed = (cost_matrix == 0) # reveal initial cells
+            weights = np.array(ast.literal_eval(row.weights))
+            reveal_cost = row.cost
+            n_total_trials = df.shape[0]
+            n_trial = (idx % n_total_trials) + 1
+
+            # Game state
+            selected_basket = None
+            uncovered_values = []
+            cost = 0
+            net_earnings = 0
+            gross_earnings = 0
+
+            # Format initial game
+            rendered_header = render_header(total_earnings, is_practice, n_trial, n_total_trials)
+            rendered_table = render_table(payoff_matrix, revealed, weights)
+            rendered_cost = render_cost(cost)
+
+            game = render(
+                rendered_header,
+                rendered_table,
+                rendered_cost
+            )
+            tools = self.get_control_tools(
+                list(range(len(weights))), # prize indices
+                list(range(1, payoff_matrix.shape[1]+1)) # basket indices
+            )
+
+            # Start interaction with initial game
+            logging.info(game)
+            messages.append({"role": "user", "content": game})
+
+            # Interact until the end of game (i.e. basket is selected)
+            while selected_basket is None:
+                response = self.api_call(messages=messages, tools=tools)
+
+                # Parse response
+                tool_call = response.choices[0].message.tool_calls[0]
+                action = tool_call.function.name
+                args = json.loads(tool_call.function.arguments)
+
+                if action == "reveal":
+                    logging.info("REVEAL: {}".format(args))
+
+                    # Update state
+                    prize = ord(args.get("prize")) - 65 # Letter to index
+                    basket_idx = args.get("basket") - 1
+                    uncovered_values.append(prize * payoff_matrix.shape[1] + basket_idx)
+                    revealed[prize, basket_idx] = True
+                    cost += reveal_cost
+
+                    # Prepare game details with the newly revealed box
+                    new_game = render(
+                        render_header(
+                            total_earnings,
+                            is_practice,
+                            n_trial,
+                            n_total_trials
+                        ),
+                        render_table(payoff_matrix, revealed, weights),
+                        render_cost(cost)
+                    )
+
+                elif action == "select":
+                    logging.info("SELECT: {}".format(args))
+
+                    # Calculate game results
+                    points = payoff_matrix[:, args.get("basket")-1]
+                    total_points = np.sum(points * weights)
+                    gross_earnings = total_points * 0.00033333333 # 30 points = $0.01
+                    net_earnings = (total_points - cost) * 0.00033333333 # 30 points = $0.01
+
+                    # Update state
+                    selected_basket = args.get("basket")
+                    if not is_practice:
+                        total_earnings += net_earnings
+                    # Reveal the whole basket since it was selected
+                    revealed[:, (args.get("basket")-1)] = True
+
+                    # Prepare game details with the earnings from the selected basket
+                    new_game = render(
+                        render_header(
+                            total_earnings,
+                            is_practice,
+                            n_trial,
+                            n_total_trials
+                        ),
+                        render_table(payoff_matrix, revealed, weights),
+                        render_cost(cost),
+                        render_result(weights, points, total_points, net_earnings)
+                    )
+
+                args[action] = new_game
+                logging.info(new_game)
+
+                # Create a message containing the result of the function call
+                tool_response, function_call_result_message = render_tool_call(tool_call, args)
+                messages.append(tool_response)
+                messages.append(function_call_result_message)
+
+            # Save values
+            if not fewshot_learning:
+                results.append(
+                    {
+                        "is_practice": row.is_practice,
+                        "payoff_matrix": row.payoff_matrix,
+                        "cost_matrix": row.cost_matrix,
+                        "weights": row.weights,
+                        "trial_num": row.trial_num,
+                        "selected_option": selected_basket-1,
+                        "uncovered_values": uncovered_values,
+                        "nudge_type": row.nudge_type,
+                        "participant_id": row.participant_id,
+                        "gross_earnings": gross_earnings,
+                        "net_earnings": net_earnings
                      }
                 )
         return results, messages
