@@ -129,7 +129,7 @@ nudge:
     incorrect_quiz_prompt: |
       Here's some info to help you get the highest bonus possible
 
-      - Red boxes cost either 1 or 3 points to reveal.
+      - Boxes cost either 1 or 3 points to reveal.
       - Different baskets can have different total numbers of prizes.
       - On average, each basket has 5 prizes of each type.
 
