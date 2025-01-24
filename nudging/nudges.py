@@ -1068,7 +1068,7 @@ class Optimal(MultiAttribute):
             cost_matrix = np.array(ast.literal_eval(row.cost_matrix))
             revealed = (cost_matrix == 0) # reveal initial cells
             weights = np.array(ast.literal_eval(row.weights))
-            reveal_cost = row.cost
+            reveal_cost = int(np.array(ast.literal_eval(row.cost_matrix)).max())
             n_total_trials = df.shape[0]
             n_trial = (idx % n_total_trials) + 1
 
