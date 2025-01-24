@@ -505,7 +505,7 @@ class Suggestion(MultiAttribute):
         # Select pre-supersize trials, revealed at least one cell, and sample a subset
         df_pre = df[(df.trial_nudge == "pre-supersize")
                     & (df.uncovered_values != "[]")]
-        df_ore = df_pre.sample(
+        df_pre = df_pre.sample(
             n=n_examples // 4,
             random_state=self.seed
         )
@@ -543,9 +543,11 @@ class Suggestion(MultiAttribute):
         result = (M_flat * mask).reshape(payoff_matrix.shape)
         basket_points_revealed = weights @ result[:, :-1] # revealed points per basket (ignoring last)
         # Selected basket is best according to information revealed or random by tiebreak
-        selected_basket_idx = np.random.choice(
-            np.flatnonzero(
-                basket_points_revealed == basket_points_revealed.max()
+        selected_basket_idx = int(
+            np.random.choice(
+                np.flatnonzero(
+                    basket_points_revealed == basket_points_revealed.max()
+                )
             )
         )
         return selected_basket_idx+1
