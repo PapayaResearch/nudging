@@ -51,7 +51,7 @@ def main(cfg: Config) -> None:
     # Create results and log directories
     ##############################################
 
-    current_date = datetime.now().strftime("%a-%b-%d-%Y_%I-%M%p")
+    current_date = datetime.now().strftime("%a-%b-%d-%Y_%I-%M-%S%p")
 
     base_dir = os.path.join(
         cfg.nudge.name,
@@ -104,12 +104,6 @@ def main(cfg: Config) -> None:
             participants,
             cfg.general.fewshot
         )
-        _, fewshot_messages = nudge.run_trials(
-            df_fewshot,
-            messages,
-            is_practice=False,
-            few_shot_learning=True
-        )
 
     for pid in tqdm(participants):
         logging.info("PARTICIPANT: {}".format(pid))
@@ -123,6 +117,12 @@ def main(cfg: Config) -> None:
 
         # Few-shot examples
         if cfg.general.fewshot > 0:
+            _, fewshot_messages = nudge.run_trials(
+                df_fewshot,
+                messages,
+                is_practice=False,
+                fewshot_learning=True
+            )
             messages += fewshot_messages
 
         # Chain-of-thought

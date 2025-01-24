@@ -28,6 +28,7 @@ import string
 import json
 import logging
 from renderer import render, render_table, render_header, render_cost, render_result, render_tool_call
+from litellm.types.utils import ChatCompletionMessageToolCall, Function
 
 class MultiAttribute:
     def __init__(
