@@ -127,7 +127,7 @@ class MultiAttribute:
         properties  = {
             f"question_{i+1}": {
                 "type": "integer",
-                "enum": list(range(len(self.quiz_choices))),
+                "enum": list(range(self.quiz_choices[i])),
                 "description": f"Answer for question {i+1} with the right choice's index.",
             }
             for i in range(len(self.quiz_choices))
@@ -158,7 +158,6 @@ class MultiAttribute:
             # Ask questions
             messages.append({"role": "user", "content": self.quiz_prompt})
             response = self.api_call(messages, self.get_quiz_tools())
-            print(response)
 
             # Parse response
             tool_call = response.choices[0].message.tool_calls[0]
