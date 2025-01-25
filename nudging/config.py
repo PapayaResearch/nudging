@@ -71,6 +71,8 @@ class General:
     include_practice: bool
     # Random seed for reproducibility
     seed: int
+    # Drop params specific params that the model doesn't support
+    additional_drop_params: list
     # API wrapper
     api_call: Any
 

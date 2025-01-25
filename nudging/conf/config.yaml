@@ -35,6 +35,8 @@ general:
   include_practice: True
   # Random seed for reproducibility.
   seed: 42
+  # Drop params specific params that the model doesn't support
+  additional_drop_params: []
   # Wrapper function for the API
   api_call:
     _target_: api.create_api_call
@@ -43,6 +45,7 @@ general:
     tool_choice: ${general.tool_choice}
     temperature: ${general.temperature}
     max_tokens: ${general.max_tokens}
+    additional_drop_params: ${general.additional_drop_params}
 
 #######################
 # Logging Settings
