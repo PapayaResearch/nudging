@@ -154,7 +154,7 @@ class MultiAttribute:
         passed_quiz = False
         quiz_attempts = 0
 
-        while not passed_quiz or quiz_attempts >= 3:
+        while not passed_quiz:
             # Ask questions
             messages.append({"role": "user", "content": self.quiz_prompt})
             response = self.api_call(messages, self.get_quiz_tools())
@@ -185,6 +185,10 @@ class MultiAttribute:
             if not passed_quiz:
                 # Help message for the quiz
                 messages.append({"role": "user", "content": self.incorrect_quiz_prompt})
+
+            if quiz_attempts >= 3:
+                # Some models might not be able to answer
+                break
 
         return messages
 
