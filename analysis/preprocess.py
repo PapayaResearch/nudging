@@ -131,15 +131,15 @@ def main():
                 weight_vector = numpy.array(eval(row.weights))
                 return numpy.dot(payoff_matrix[:, row[option]], weight_vector)
 
-            def optimal_option(row: pandas.Series) -> int:
-                payoff_matrix = numpy.array(eval(row.payoff_matrix))
-                weight_vector = numpy.array(eval(row.weights))
-                return numpy.argmax(payoff_matrix.T @ weight_vector)
-
             df["value_first_option_selected"] = df.apply(lambda row: value_option(row, "first_selected_option"), axis=1)
             df["value_final_option_selected"] = df.apply(lambda row: value_option(row, "selected_option"), axis=1)
-            df["optimal_option"] = df.apply(optimal_option, axis=1)
 
+        def optimal_option(row: pandas.Series) -> int:
+            payoff_matrix = numpy.array(eval(row.payoff_matrix))
+            weight_vector = numpy.array(eval(row.weights))
+            return numpy.argmax(payoff_matrix.T @ weight_vector)
+
+        df["optimal_option"] = df.apply(optimal_option, axis=1)
 
         df.to_csv("data/data-%s.csv" % nudge, index=False)
 
