@@ -96,7 +96,7 @@ def main(cfg: Config) -> None:
     # Run simulation
     ##############################################
 
-    participants = nudge.data.participant_id.unique()[cfg.general.offset:cfg.general.participants]
+    participants = nudge.data.participant_id.unique()[cfg.general.offset:cfg.general.offset+cfg.general.participants]
 
     # Few-shot learning
     if cfg.general.fewshot > 0:
@@ -117,13 +117,12 @@ def main(cfg: Config) -> None:
 
         # Few-shot examples
         if cfg.general.fewshot > 0:
-            _, fewshot_messages = nudge.run_trials(
+            _, messages = nudge.run_trials(
                 df_fewshot,
                 messages,
                 is_practice=False,
                 fewshot_learning=True
             )
-            messages += fewshot_messages
 
         # Chain-of-thought
         if cfg.general.cot:
@@ -138,7 +137,9 @@ def main(cfg: Config) -> None:
             fewshot_learning=False
         )
         if cfg.general.include_practice:
-            messages += practice_messages
+            # TODO: This is only including the last game of practice
+            # so run_trials needs to (like fewshot collect all messages)
+            messages = practice_messages
 
         if not os.path.exists(results_file):
             pd.DataFrame(results).to_csv(results_file, mode='w', header=True, index=False)

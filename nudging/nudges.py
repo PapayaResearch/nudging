@@ -42,6 +42,7 @@ class MultiAttribute:
             incorrect_quiz_prompt: str,
             practice_prompt: str,
             test_prompt: str,
+            supports_integers: bool,
             seed: int
     ):
         # Load and shuffle data with reproducibility
@@ -54,6 +55,7 @@ class MultiAttribute:
         self.incorrect_quiz_prompt = incorrect_quiz_prompt
         self.practice_prompt = practice_prompt
         self.test_prompt = test_prompt
+        self.supports_integers = supports_integers
         self.seed = seed
 
     def get_test_data(
@@ -91,8 +93,8 @@ class MultiAttribute:
                                 "description": "The prize's letter corresponding to the box.",
                             },
                             "basket": {
-                                "type": "integer",
-                                "enum": baskets,
+                                "type": "integer" if self.supports_integers else "string",
+                                "enum": baskets if self.supports_integers else [str(v) for v in baskets],
                                 "description": "The basket's number corresponding to the box.",
                             },
                         },
@@ -111,8 +113,8 @@ class MultiAttribute:
                         "type": "object",
                         "properties": {
                             "basket": {
-                                "type": "integer",
-                                "enum": baskets,
+                                "type": "integer" if self.supports_integers else "string",
+                                "enum": baskets if self.supports_integers else [str(v) for v in baskets],
                                 "description": "The basket's number.",
                             },
                         },
@@ -126,8 +128,8 @@ class MultiAttribute:
     def get_quiz_tools(self):
         properties  = {
             f"question_{i+1}": {
-                "type": "integer",
-                "enum": list(range(self.quiz_choices[i])),
+                "type": "integer" if self.supports_integers else "string",
+                "enum": list(range(self.quiz_choices[i])) if self.supports_integers else [str(v) for v in range(self.quiz_choices[i])],
                 "description": f"Answer for question {i+1} with the right choice's index.",
             }
             for i in range(len(self.quiz_choices))
@@ -162,7 +164,7 @@ class MultiAttribute:
             # Parse response
             tool_call = response.choices[0].message.tool_calls[0]
             args = json.loads(tool_call.function.arguments)
-            answers = [args.get(f"question_{i}") for i in range (1, len(self.quiz_answers) + 1)]
+            answers = [int(args.get(f"question_{i}")) for i in range (1, len(self.quiz_answers) + 1)]
 
             if answers == self.quiz_answers:
                 logging.info("CORRECT QUIZ: {}".format(args))
@@ -362,7 +364,7 @@ class Default(MultiAttribute):
 
                     # Update state
                     prize = ord(args.get("prize")) - 65 # Letter to index
-                    basket_idx = args.get("basket") - 1
+                    basket_idx = int(args.get("basket")) - 1
                     uncovered_values.append(prize * payoff_matrix.shape[1] + basket_idx)
                     revealed[prize, basket_idx] = True
                     cost += reveal_cost
@@ -383,18 +385,18 @@ class Default(MultiAttribute):
                     logging.info("SELECT: {}".format(args))
 
                     # Calculate game results
-                    points = payoff_matrix[:, args.get("basket")-1]
+                    points = payoff_matrix[:, int(args.get("basket"))-1]
                     total_points = np.sum(points * weights)
                     gross_earnings = total_points * 0.00033333333 # 30 points = $0.01
                     net_earnings = (total_points - cost) * 0.00033333333 # 30 points = $0.01
 
                     # Update state
-                    selected_basket = args.get("basket")
+                    selected_basket = int(args.get("basket"))
                     if not is_practice:
                         total_earnings += net_earnings
                     chose_nudge = (selected_basket == (nudge_index + 1))
                     # Reveal the whole basket since it was selected
-                    revealed[:, (args.get("basket")-1)] = True
+                    revealed[:, (int(args.get("basket"))-1)] = True
 
                     # Prepare game details with the earnings from the selected basket
                     new_game = render(
@@ -723,7 +725,7 @@ class Suggestion(MultiAttribute):
 
                     # Update state
                     prize = ord(args.get("prize")) - 65 # Letter to index
-                    basket_idx = args.get("basket") - 1
+                    basket_idx = int(args.get("basket")) - 1
                     uncovered_values.append(prize * payoff_matrix.shape[1] + basket_idx)
                     revealed[prize, basket_idx] = True
                     cost += reveal_cost
@@ -749,7 +751,7 @@ class Suggestion(MultiAttribute):
                     logging.info("SELECT: {}".format(args))
 
                     # Calculate game results
-                    points = payoff_matrix[:, args.get("basket")-1]
+                    points = payoff_matrix[:, int(args.get("basket"))-1]
                     total_points = np.sum(points * weights)
                     gross_earnings = total_points * 0.00033333333 # 30 points = $0.01
                     net_earnings = (total_points - cost) * 0.00033333333 # 30 points = $0.01
@@ -758,7 +760,7 @@ class Suggestion(MultiAttribute):
                         # If selecting for the first time then show the nudge and continue the game;
                         # if selecting for the second time then show and include results, and finish the game
                         if first_selected_basket is None:
-                            first_selected_basket = args.get("basket")
+                            first_selected_basket = int(args.get("basket"))
 
                             # Prepare game details with the earnings from the selected basket
                             rendered_header = render_header(total_earnings, is_practice, n_trial, n_total_trials)
@@ -774,13 +776,13 @@ class Suggestion(MultiAttribute):
                                 list(range(1, shown_baskets+1)) # basket indices
                             )
                         else:
-                            selected_basket = args.get("basket")
+                            selected_basket = int(args.get("basket"))
 
                             if not is_practice:
                                 total_earnings += net_earnings
                             chose_nudge = (selected_basket == (nudge_index + 1))
                             # Reveal the whole basket since it was selected
-                            revealed[:, (args.get("basket")-1)] = True
+                            revealed[:, (int(args.get("basket"))-1)] = True
 
                             # Prepare game details with the earnings from the selected basket
                             rendered_header = render_header(total_earnings, is_practice, n_trial, n_total_trials)
@@ -791,12 +793,12 @@ class Suggestion(MultiAttribute):
                             new_game = render(rendered_header, rendered_nudge, rendered_table, rendered_cost, rendered_result)
                     else:
                         # Update state
-                        selected_basket = first_selected_basket = args.get("basket")
+                        selected_basket = first_selected_basket = int(args.get("basket"))
                         if not is_practice:
                             total_earnings += net_earnings
                         chose_nudge = (selected_basket == (nudge_index + 1))
                         # Reveal the whole basket since it was selected
-                        revealed[:, (args.get("basket")-1)] = True
+                        revealed[:, (int(args.get("basket"))-1)] = True
 
                         # Prepare game details with the earnings from the selected basket
                         rendered_header = render_header(total_earnings, is_practice, n_trial, n_total_trials)
@@ -966,7 +968,7 @@ class Highlight(MultiAttribute):
 
                     # Update state
                     prize = ord(args.get("prize")) - 65 # Letter to index
-                    basket_idx = args.get("basket") - 1
+                    basket_idx = int(args.get("basket")) - 1
                     uncovered_values.append(prize * payoff_matrix.shape[1] + basket_idx)
                     revealed[prize, basket_idx] = True
                     cost += reveal_cost_array[prize]
@@ -988,17 +990,17 @@ class Highlight(MultiAttribute):
                     logging.info("SELECT: {}".format(args))
 
                     # Calculate game results
-                    points = payoff_matrix[:, args.get("basket")-1]
+                    points = payoff_matrix[:, int(args.get("basket"))-1]
                     total_points = np.sum(points * weights)
                     gross_earnings = total_points * 0.00033333333 # 30 points = $0.01
                     net_earnings = (total_points - cost) * 0.00033333333 # 30 points = $0.01
 
                     # Update state
-                    selected_basket = args.get("basket")
+                    selected_basket = int(args.get("basket"))
                     if not is_practice:
                         total_earnings += net_earnings
                     # Reveal the whole basket since it was selected
-                    revealed[:, (args.get("basket")-1)] = True
+                    revealed[:, (int(args.get("basket"))-1)] = True
 
                     # Prepare game details with the earnings from the selected basket
                     new_game = render(
@@ -1116,7 +1118,7 @@ class Optimal(MultiAttribute):
 
                     # Update state
                     prize = ord(args.get("prize")) - 65 # Letter to index
-                    basket_idx = args.get("basket") - 1
+                    basket_idx = int(args.get("basket")) - 1
                     uncovered_values.append(prize * payoff_matrix.shape[1] + basket_idx)
                     revealed[prize, basket_idx] = True
                     cost += reveal_cost
@@ -1137,17 +1139,17 @@ class Optimal(MultiAttribute):
                     logging.info("SELECT: {}".format(args))
 
                     # Calculate game results
-                    points = payoff_matrix[:, args.get("basket")-1]
+                    points = payoff_matrix[:, int(args.get("basket"))-1]
                     total_points = np.sum(points * weights)
                     gross_earnings = total_points * 0.00033333333 # 30 points = $0.01
                     net_earnings = (total_points - cost) * 0.00033333333 # 30 points = $0.01
 
                     # Update state
-                    selected_basket = args.get("basket")
+                    selected_basket = int(args.get("basket"))
                     if not is_practice:
                         total_earnings += net_earnings
                     # Reveal the whole basket since it was selected
-                    revealed[:, (args.get("basket")-1)] = True
+                    revealed[:, (int(args.get("basket"))-1)] = True
 
                     # Prepare game details with the earnings from the selected basket
                     new_game = render(

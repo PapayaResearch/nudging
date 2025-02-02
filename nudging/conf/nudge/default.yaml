@@ -129,7 +129,7 @@ nudge:
       3. How many points does it cost to reveal a box?
       [No points/1 point/Either 1 point or 2 points, depending on the problem/2 points]
 
-      4. Does each basket have the same the total number of prizes?
+      4. Does each basket have the same total number of prizes?
       [Yes/No/Maybe]
 
       5. How many prizes of each type does a basket have on average?
@@ -151,5 +151,7 @@ nudge:
 
     test_prompt: |
       You will now complete 32 test games. Earnings from these games will be added to your final pay.
+
+    supports_integers: ${provider.supports_integers}
 
     seed: ${general.seed}

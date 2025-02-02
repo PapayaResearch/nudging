@@ -114,4 +114,6 @@ nudge:
     test_prompt: |
       You will now complete 30 test games. Earnings from these games will be added to your final pay.
 
+    supports_integers: ${provider.supports_integers}
+
     seed: ${general.seed}

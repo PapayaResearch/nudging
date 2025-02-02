@@ -37,6 +37,8 @@ general:
   seed: 42
   # Drop params specific params that the model doesn't support
   additional_drop_params: []
+  # Delay before API calls to avoid rate limits
+  delay: 0
   # Wrapper function for the API
   api_call:
     _target_: api.create_api_call
@@ -46,6 +48,7 @@ general:
     temperature: ${general.temperature}
     max_tokens: ${general.max_tokens}
     additional_drop_params: ${general.additional_drop_params}
+    delay: ${general.delay}
 
 #######################
 # Logging Settings

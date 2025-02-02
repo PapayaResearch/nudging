@@ -42,6 +42,8 @@ class Provider:
     key: str
     # Key name for this provider
     key_name: str
+    # Use integers or strings in tool calls
+    supports_integers: bool
 
 #######################
 # General Settings
@@ -73,6 +75,8 @@ class General:
     seed: int
     # Drop params specific params that the model doesn't support
     additional_drop_params: list
+    # Delay before API calls to avoid rate limits
+    delay: int
     # API wrapper
     api_call: Any
 
