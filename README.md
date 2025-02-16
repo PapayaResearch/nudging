@@ -1,4 +1,4 @@
-# Nudge Hyperensitivity in LLM Decision-Making
+# Nudge Hypersensitivity in LLM Decision-Making
 
 An initial version was submitted to the **NeurIPS Behavioral Machine Learning 2024**, and was accepted as a spotlight paper **[Superficial Alignment, Subtle Divergence, and Nudge Sensitivity in LLM Decision-Making](https://openreview.net/forum?id=chbdsWgjS6)**. For more details about the original setup, we refer to [Optimal nudging for cognitively bounded agents](https://psycnet.apa.org/record/2024-21499-001).
 
