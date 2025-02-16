@@ -1,0 +1,61 @@
+##################
+# Defaults
+##################
+
+defaults:
+  # Nudge from Optimal nudging (Callaway et al, 2023)
+  - nudge: default
+  # Provider from LiteLLM
+  - provider: openai
+
+#######################
+# General Settings
+#######################
+
+general:
+  # Model from those available in the provider
+  model: gpt-4o-mini
+  # Allows parallel tool calls
+  parallel_tool_calls: False
+  # Force model to use one or more tools (none, auto, required)
+  tool_choice: required
+  # Maximum number of tokens in the response from the API
+  max_tokens: 300
+  # Number of participants from the original data
+  participants: 10
+  # Offset the number of participants to be able to dynamically collect more
+  offset: 0
+  # Temperature for the model (OpenAI's default is 1.0)
+  temperature: 0.2
+  # Number of examples the model sees before playing.
+  fewshot: 0
+  # Include chain-of-Thought prompt with the experiments
+  cot: False
+  # Include practice in the context window or not
+  include_practice: True
+  # Random seed for reproducibility.
+  seed: 42
+  # Drop params specific params that the model doesn't support
+  additional_drop_params: []
+  # Delay before API calls to avoid rate limits
+  delay: 0
+  # Wrapper function for the API
+  api_call:
+    _target_: api.create_api_call
+    model: ${general.model}
+    parallel_tool_calls: ${general.parallel_tool_calls}
+    tool_choice: ${general.tool_choice}
+    temperature: ${general.temperature}
+    max_tokens: ${general.max_tokens}
+    additional_drop_params: ${general.additional_drop_params}
+    delay: ${general.delay}
+
+#######################
+# Logging Settings
+#######################
+
+logging:
+    # Directory for writing logs
+    log_dir: ${hydra:runtime.cwd}/logs
+    # Directory for writing results
+    results_dir: ${hydra:runtime.cwd}/results

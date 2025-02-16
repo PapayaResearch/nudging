@@ -1,0 +1,4 @@
+name: google
+key: ${hydra:runtime.cwd}/keys/goo.txt
+key_name: GEMINI_API_KEY
+supports_integers: False

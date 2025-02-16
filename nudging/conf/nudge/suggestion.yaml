@@ -1,0 +1,119 @@
+name: suggestion
+nudge:
+    _target_: nudges.Suggestion
+    # Original data from Callaway et al paper
+    data: ${hydra:runtime.cwd}/data/suggestion.csv
+    # Wrapper to call the LLM APIs
+    api_call: ${general.api_call}
+    # List with number of options per question in the quiz
+    quiz_choices: [4, 2, 3]
+    # Correct answers to the quiz
+    quiz_answers: [1, 1, 2]
+    # All the prompts necessary to simulate the original paradigm
+    initial_prompt: |
+      Welcome! In this study you will play a game. On each round you will see a table like this and you will choose a basket.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 20 points | ?          | ?          | ?          | ?          | ?          |
+      | B: 10 points | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 0 points
+
+      Each basket has some prizes (A and B below), and each prize is worth some points. You want to get the most points possible.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 20 points | ?          | ?          | ?          | ?          | ?          |
+      | B: 10 points | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 0 points
+
+      To see how many prizes of each type a basket has, you can reveal the corresponding box. Here, you can see that Basket 2 has 4 A prizes, which are each worth 20 points.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 20 points | ?          | 4          | ?          | ?          | ?          |
+      | B: 10 points | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 2 points
+
+      You may reveal as many or as few boxes as you wish. However, each box costs 2 points.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 20 points | ?          | 4          | ?          | 2          | ?          |
+      | B: 10 points | ?          | ?          | 5          | ?          | ?          |
+      Total accumulated cost: 6 points
+
+      When you're ready, you can choose a basket. In this example, let's imagine that you choose Basket 3. In this case, you would win 6 A prizes (worth 20 points each) and 5 B prizes (worth 10 points each), for a total of 170 points. However, because you spent 6 points revealing three boxes, your net earnings on this problem would be 164 points.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 20 points | ?          | 4          | 6          | 2          | ?          |
+      | B: 10 points | ?          | ?          | 5          | ?          | ?          |
+      Total accumulated cost: 6 points
+
+      You won 6 A prizes, and 5 B prizes, totaling 170 points.
+
+      On some problems, there will be five types of prizes in each basket.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 3 points  | ?          | ?          | ?          | ?          | ?          |
+      | B: 1 points  | ?          | ?          | ?          | ?          | ?          |
+      | C: 6 points  | ?          | ?          | ?          | ?          | ?          |
+      | D: 16 points | ?          | ?          | ?          | ?          | ?          |
+      | E: 4 points  | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 0 points
+
+      Let's see the values if you revealed all of the boxes. On average there are 5 prizes of each type. Usually there are between 3 and 7. There are never more than 10 and you can't have negative prizes (that would be a bummer!)
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 3 points  | 4          | 5          | 6          | 4          | 7          |
+      | B: 1 points  | 5          | 4          | 4          | 3          | 5          |
+      | C: 6 points  | 2          | 4          | 5          | 5          | 4          |
+      | D: 16 points | 5          | 6          | 4          | 7          | 7          |
+      | E: 4 points  | 4          | 4          | 6          | 3          | 5          |
+      Total accumulated cost: 50 points
+
+      On certain problems, we will highlight one of the baskets and reveal how many prizes of one type it has.
+
+      Consider basket 5 - it has 6 B prizes!
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 12 points | ?          | ?          | ?          | ?          | ?          |
+      | B: 18 points | ?          | ?          | ?          | 6          | ?          |
+      Total accumulated cost: 0 points
+
+      You will earn real money for your choices. At the end of the experiment, the points you've earned will be paid as a bonus with 30 points equal to $0.01.
+
+    quiz_prompt: |
+      Please answer a few questions to confirm that you understand the task
+
+      1. How many points does it cost to reveal a box?
+      [No points/2 points/Either 2 points or 4 points, depending on the problem/4 points]
+
+      2. Does each basket have to have the same the total number of prizes?
+      [Yes/No]
+
+      3. How many prizes of each type does a basket have on average?
+      [1/2/5]
+
+    incorrect_quiz_prompt: |
+      Here's some info to help you get the highest bonus possible
+
+      - Boxes cost 2 points to reveal.
+      - Different baskets can have different total numbers of prizes.
+      - On average, each basket has 5 prizes of each type.
+
+      Try again
+
+    practice_prompt: |
+      You will first complete 2 practice games. Earnings from these games will not be added to your final pay.
+
+    test_prompt: |
+      You will now complete 30 test games. Earnings from these games will be added to your final pay.
+
+    supports_integers: ${provider.supports_integers}
+
+    seed: ${general.seed}

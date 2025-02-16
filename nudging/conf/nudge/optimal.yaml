@@ -1,0 +1,126 @@
+name: optimal
+nudge:
+    _target_: nudges.Optimal
+    # Original data from Callaway et al paper
+    data: ${hydra:runtime.cwd}/data/optimal_nudging_changing_belief_state_data.csv
+    # Wrapper to call the LLM APIs
+    api_call: ${general.api_call}
+    # List with number of options per question in the quiz
+    quiz_choices: [4, 2, 3]
+    # Correct answers to the quiz
+    quiz_answers: [3, 1, 2]
+    # All the prompts necessary to simulate the original paradigm
+    initial_prompt: |
+      Welcome! In this study you will play a game. On each round you will see a table like this and you will choose a basket.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 12 points | ?          | ?          | ?          | ?          | ?          |
+      | B: 6 points  | ?          | ?          | ?          | ?          | ?          |
+      | C: 8 points  | ?          | 3          | ?          | ?          | ?          |
+      | D: 2 points  | 2          | ?          | 7          | ?          | ?          |
+      | E: 2 points  | 6          | 2          | ?          | ?          | 1          |
+      Total accumulated cost: 0 points
+
+      Each basket has five types of prizes (A through E) worth different amounts of points (12 points for prize A and 6 points for prize B in this example). You want to get as many points as possible.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 12 points | ?          | ?          | ?          | ?          | ?          |
+      | B: 6 points  | ?          | ?          | ?          | ?          | ?          |
+      | C: 8 points  | ?          | 3          | ?          | ?          | ?          |
+      | D: 2 points  | 2          | ?          | 7          | ?          | ?          |
+      | E: 2 points  | 6          | 2          | ?          | ?          | 1          |
+      Total accumulated cost: 0 points
+
+      Numbers in the table show how many prizes of each type are in each basket. Some of these numbers will be shown at the start of the problem. To reveal the hidden values (i.e., the numbers in the boxes), you can reveal a box.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 12 points | 6          | ?          | ?          | ?          | ?          |
+      | B: 6 points  | ?          | ?          | ?          | ?          | ?          |
+      | C: 8 points  | ?          | 3          | ?          | ?          | ?          |
+      | D: 2 points  | 2          | ?          | 7          | ?          | ?          |
+      | E: 2 points  | 6          | 2          | ?          | ?          | 1          |
+      Total accumulated cost: 2 points
+
+      You can reveal as many or as few of these boxes as you wish. However, each box costs 2 points to reveal.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 12 points | 6          | ?          | ?          | ?          | 7          |
+      | B: 6 points  | ?          | ?          | ?          | 5          | ?          |
+      | C: 8 points  | ?          | 3          | ?          | 6          | ?          |
+      | D: 2 points  | 2          | 7          | 7          | ?          | ?          |
+      | E: 2 points  | 6          | 2          | ?          | ?          | 1          |
+      Total accumulated cost: 10 points
+
+      Whenever you're ready, you can choose a basket. Let's imagine that you choose Basket 1.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 12 points | 6          | ?          | ?          | ?          | 7          |
+      | B: 6 points  | 6          | ?          | ?          | 5          | ?          |
+      | C: 8 points  | 3          | 3          | ?          | 6          | ?          |
+      | D: 2 points  | 2          | 7          | 7          | ?          | ?          |
+      | E: 2 points  | 6          | 2          | ?          | ?          | 1          |
+      Total accumulated cost: 10 points
+
+      You won 6 A prizes, 6 B prizes, 3 C prizes, 2 D prizes, and 6 E prizes, totaling 148 points.
+
+      If so, you would win 6 A prizes (worth 12 points each), 6 B prizes (6 points each), 3 C prizes (8 points each), 2 D prizes (2 points each), and 6 E prizes (2 point each), for a total of 148 points. However, because you spent 10 points revealing 5 boxes, you would earn 138 points.
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 12 points | 6          | ?          | ?          | ?          | 7          |
+      | B: 6 points  | 6          | ?          | ?          | 5          | ?          |
+      | C: 8 points  | 3          | 3          | ?          | 6          | ?          |
+      | D: 2 points  | 2          | 7          | 7          | ?          | ?          |
+      | E: 2 points  | 6          | 2          | ?          | ?          | 1          |
+      Total accumulated cost: 10 points
+
+      You won 6 A prizes, 6 B prizes, 3 C prizes, 2 D prizes, and 6 E prizes, totaling 148 points.
+
+      Let's see the values that would be revealed if you revealed all the boxes on a different problem. On average there are 5 prizes of each type. Usually there are between 3 and 7. There are never more than 10 and you can't have negative prizes (that would be a bummer!)
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 12 points | 9          | 6          | 6          | 7          | 6          |
+      | B: 6 points  | 6          | 5          | 6          | 5          | 5          |
+      | C: 8 points  | 6          | 2          | 5          | 7          | 8          |
+      | D: 2 points  | 2          | 3          | 6          | 5          | 7          |
+      | E: 2 points  | 2          | 7          | 4          | 4          | 3          |
+      Total accumulated cost: 38 points
+
+      You will earn real money for your choices. At the end of the experiment, the points you've earned will be paid as a bonus with 30 points equal to $0.01.
+
+    quiz_prompt: |
+      Please answer a few questions before starting the task
+
+      1. How many points does it cost to reveal a box?
+      [No points/1 point/Either 1 point or 2 points, depending on the box/2 points]
+
+      2. Does each basket have to have the same total number of prizes?
+      [Yes/No]
+
+      3. How many prizes of each type does a basket have on average?
+      [1/2/5]
+
+    incorrect_quiz_prompt: |
+      Here's some info to help you get the highest bonus possible
+
+      - Boxes cost 2 points to reveal.
+      - Different baskets can have different total numbers of prizes.
+      - On average, each basket has 5 prizes of each type.
+
+      Try again
+
+    practice_prompt: |
+      You will first complete 2 practice games. Earnings from these games will not be added to your final pay.
+
+    test_prompt: |
+      You will now complete 30 test games. Earnings from these games will be added to your final pay.
+
+    supports_integers: ${provider.supports_integers}
+
+    seed: ${general.seed}

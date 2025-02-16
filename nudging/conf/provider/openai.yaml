@@ -1,0 +1,4 @@
+name: openai
+key: ${hydra:runtime.cwd}/keys/oai.txt
+key_name: OPENAI_API_KEY
+supports_integers: True

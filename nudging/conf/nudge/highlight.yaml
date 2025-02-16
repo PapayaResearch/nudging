@@ -1,0 +1,146 @@
+name: highlight
+nudge:
+    _target_: nudges.Highlight
+    # Original data from Callaway et al paper
+    data: ${hydra:runtime.cwd}/data/highlight.csv
+    # Wrapper to call the LLM APIs
+    api_call: ${general.api_call}
+    # List with number of options per question in the quiz
+    quiz_choices: [4, 2, 3]
+    # Correct answers to the quiz
+    quiz_answers: [2, 1, 2]
+    # All the prompts necessary to simulate the original paradigm
+    initial_prompt: |
+      Welcome! In this study you will play a game. On each round you will see a table like this and you will choose a basket.
+
+      Cost of revealing prize A=3 points, B=1 point, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 2 points  | ?          | ?          | ?          | ?          | ?          |
+      | B: 18 points | ?          | ?          | ?          | ?          | ?          |
+      | C: 10 points | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 0 points
+
+      Each basket has three types of prizes worth different amounts of points (2 points for prize A, 18 points for prize B, and 10 points for prize C in this example). You want to get as many points as possible.
+
+      Cost of revealing prize A=3 points, B=1 point, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 2 points  | ?          | ?          | ?          | ?          | ?          |
+      | B: 18 points | ?          | ?          | ?          | ?          | ?          |
+      | C: 10 points | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 0 points
+
+      Numbers hidden with a question mark in the boxes show how many prizes of each type are in a basket.
+
+      Cost of revealing prize A=3 points, B=1 point, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 2 points  | 6          | ?          | ?          | ?          | ?          |
+      | B: 18 points | ?          | ?          | ?          | ?          | ?          |
+      | C: 10 points | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 3 points
+
+      Most boxes cost 3 points to reveal, but on certain problems one prize's boxes will be put on sale and cost only 1 point to reveal. On this problem, prize B is on sale.
+
+      Cost of revealing prize A=3 points, B=1 point, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 2 points  | 6          | ?          | ?          | ?          | ?          |
+      | B: 18 points | ?          | ?          | ?          | ?          | ?          |
+      | C: 10 points | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 3 points
+
+      You can reveal as many or as few boxes as you wish.
+
+      Cost of revealing prize A=3 points, B=1 point, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 2 points  | 6          | ?          | ?          | 5          | ?          |
+      | B: 18 points | 7          | ?          | ?          | ?          | ?          |
+      | C: 10 points | ?          | 7          | ?          | ?          | ?          |
+      Total accumulated cost: 10 points
+
+      Whenever you're ready, you can choose a basket. Let's imagine that you choose Basket 1.
+
+      Cost of revealing prize A=3 points, B=1 point, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 2 points  | 6          | ?          | ?          | 5          | ?          |
+      | B: 18 points | 7          | ?          | ?          | ?          | ?          |
+      | C: 10 points | 4          | 7          | ?          | ?          | ?          |
+      Total accumulated cost: 10 points
+
+      You won 6 A prizes, 7 B prizes, and 4 C prizes, totaling 178 points.
+
+      If so, you would win 6 A prizes (worth 2 points each), 7 B prizes (18 points each), and 4 C prizes (10 points each), for a total of 178 points. However, because you spent 10 points revealing, you would earn 168 points on this trial.
+
+      Cost of revealing prize A=3 points, B=1 point, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 2 points  | 6          | ?          | ?          | 5          | ?          |
+      | B: 18 points | 7          | ?          | ?          | ?          | ?          |
+      | C: 10 points | 4          | 7          | ?          | ?          | ?          |
+      Total accumulated cost: 10 points
+
+      The value of each prize will vary between problems. Note that on certain problems, no prize will be put on sale and all boxes will cost 3 points to reveal.
+
+      Cost of revealing prize A=3 points, B=3 points, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 7 points  | ?          | ?          | ?          | ?          | ?          |
+      | B: 19 points | ?          | ?          | ?          | ?          | ?          |
+      | C: 4 points  | ?          | ?          | ?          | ?          | ?          |
+      Total accumulated cost: 0 points
+
+      Let's see the values that you'd see if you revealed all of the boxes on this problem. On average there are 5 prizes of each type in a basket. Usually there are between 3 and 7. There are never more than 10 and you can't have negative prizes (that would be a bummer!)
+
+      Cost of revealing prize A=3 points, B=3 point, and C=3 points
+
+      |       Prizes | Basket 1   | Basket 2   | Basket 3   | Basket 4   | Basket 5   |
+      |-------------:|:-----------|:-----------|:-----------|:-----------|:-----------|
+      | A: 7 points  | 3          | 9          | 9          | 5          | 4          |
+      | B: 19 points | 5          | 5          | 2          | 4          | 4          |
+      | C: 4 points  | 4          | 5          | 1          | 6          | 4          |
+      Total accumulated cost: 45 points
+
+      You will earn real money for your choices. At the end of the experiment, the points you've earned will be paid as a bonus with 30 points equal to $0.01.
+
+    quiz_prompt: |
+      Please answer a few questions to confirm that you understand the task
+
+      1. How many points does it cost to reveal a box?
+      [No points/1 point/Either 1 point or 3 points, depending on the box/3 points]
+
+      2. Does each basket have to have the same the total number of prizes?
+      [Yes/No]
+
+      3. How many prizes of each type does a basket have on average?
+      [1/2/5]
+
+    incorrect_quiz_prompt: |
+      Here's some info to help you get the highest bonus possible
+
+      - Boxes cost either 1 or 3 points to reveal.
+      - Different baskets can have different total numbers of prizes.
+      - On average, each basket has 5 prizes of each type.
+
+      Try again
+
+    practice_prompt: |
+      You will first complete 2 practice games. Earnings from these games will not be added to your final pay.
+
+    test_prompt: |
+      You will now complete 28 test games. Earnings from these games will be added to your final pay.
+
+    supports_integers: ${provider.supports_integers}
+
+    seed: ${general.seed}
