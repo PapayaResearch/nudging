@@ -1,199 +1,202 @@
-library(tidyverse)
-library(lme4)
-library(emmeans)
-library(ggdist)
-library(ggsci)
+# Copyright (c) 2025
+# Manuel Cherep <mcherep@mit.edu>
+# Nikhil Singh <nsingh1@mit.edu>
 
-d <- read.csv("data/data-suggestion.csv")
-d <- d %>% mutate(
-  n_prizes = factor(n_prizes),
-  n_baskets = factor(n_baskets),
-  trial_nudge = trial_nudge %>% recode(
-    "control" = "Absent",
-    "pre-supersize" = "Early",
-    "post-supersize" = "Late"
-  ) %>% factor(levels = c("Absent", "Early", "Late")),
-  is_practice = is_practice %>% recode(
-    "True" = TRUE,
-    "False" = FALSE
-  ),
-  should_change = value_first_option_selected < value_final_option_selected,
-  total_points = net_earnings * 3000,
-  Features = n_prizes,
-  Options = n_baskets,
-  source = source %>% recode(
-    "real" = "Human",
-    "gpt-3.5-turbo-0125" = "GPT-3.5 Turbo",
-    "gpt-4o-mini-2024-07-18" = "GPT-4o Mini",
-    "gemini/gemini-1.5-flash" = "Gemini 1.5 Flash",
-    "gemini/gemini-1.5-pro" = "Gemini 1.5 Pro",
-    "claude-3-5-sonnet-20241022" = "Claude 3.5 Sonnet",
-    "claude-3-haiku-20240307" = "Claude 3 Haiku",
-    "gpt-4o-2024-08-06" = "GPT-4o"
-  ) %>% factor(levels = c(
-    "Human",
-    "GPT-3.5 Turbo",
-    "GPT-4o Mini",
-    "GPT-4o",
-    "Gemini 1.5 Flash",
-    "Gemini 1.5 Pro",
-    "Claude 3 Haiku",
-    "Claude 3.5 Sonnet"
-  )),
-  method = ifelse(cot, "CoT", ifelse(fs > 0, "FS", "Base"))
-)
-d <- d %>% subset(!is_practice)
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 
-d.summary <- d %>%
-  subset(trial_nudge != "Absent") %>%
-  group_by(source, method, trial_nudge, Features) %>%
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+source("utils.R")
+
+# ============================================================================
+# DATA PREPROCESSING
+# ============================================================================
+
+data_raw <- read.csv("data/data-suggestion.csv")
+d <- preprocess_data(data_raw, nudge_type = "suggestion")
+message(paste("Processed", nrow(d), "trials from suggestion nudge experiment"))
+
+# ============================================================================
+# PLOT FOR SUGGESTION EFFECT
+# ============================================================================
+
+plot_suggestion_nudge <- d %>%
+  filter(trial_nudge != "Abs.") %>%
+  group_by(source, source_parent, source_child, method, trial_nudge) %>%
   summarize(
-    nudge_prob = mean(
+    nudge_acceptance = mean(
       chose_nudge %>% recode(
         "True" = 1,
         "False" = 0
       )
-    )
-  )
-
-plot.suggestion_nudge <- d %>%
-  subset(trial_nudge != "Absent") %>%
-  group_by(source, method, trial_nudge) %>%
-  summarize(
-    nudge_prob = mean(
-      chose_nudge %>% recode(
-        "True" = 1,
-        "False" = 0
-      )
-    )
-  ) %>% arrange(nudge_prob) %>%
-  ggplot(aes(trial_nudge, nudge_prob, color = method)) +
-  geom_point() +
-  geom_line(aes(group = method), size = 1) +
-  facet_grid(~ source) +
-  scale_y_continuous(limits = c(0, 1), breaks = c(0.5, 1), labels = scales::percent) +
-  scale_color_uchicago() +
-  xlab("Nudge") +
-  ylab("P(Choose Nudge)") +
+    ),
+    .groups = "drop"
+  ) %>%
+  arrange(nudge_acceptance) %>%
+  ggplot(aes(trial_nudge, nudge_acceptance, color = method)) +
+  geom_point(size = 1.5) +
+  geom_line(aes(group = method), size = 0.6) +
+  ggh4x::facet_nested( ~ source_parent + source_child, strip = ggh4x::strip_nested(bleed = TRUE)) +
+  scale_y_continuous(
+    limits = c(0, 1),
+    breaks = c(0.25, 0.5, 0.75, 1),
+    labels = scales::percent
+  ) +
+  scale_color_prompt() +
+  labs(
+    x = "Suggestion Timing",
+    y = "P(Choose Suggested)"
+  ) +
   guides(color = guide_legend(title = "Method")) +
-  theme_minimal() +
-  theme(
-    axis.line.y.left = element_line(color = "black"),
-    axis.line.x.bottom = element_line(color = "black"),
-    axis.ticks = element_line(color = "black"),
-    panel.grid = element_blank()
-  )
+  theme_nudge()
 
-plot.suggestion_nudge %>% ggsave(
+# Save suggestion effect plot
+plot_suggestion_nudge %>% ggsave(
   "figures/plot-suggestion_nudge.png",
-  width = 10,
+  width = 8,
   height = 2.4,
+  dpi = 300,
   plot = .
 )
 
-table.change_selection <- d %>%
-  subset(trial_nudge == "Late" & source != "Human") %>%
+# ============================================================================
+# TABLE FOR CHANGE ANALYSIS
+# ============================================================================
+
+# Create table showing probability of changing selection after late suggestion
+table_change_selection <- d %>%
+  filter(trial_nudge == "Late" & source != "Human") %>%
   mutate(
     changed_selection = first_selected_option != selected_option
-  ) %>% group_by(
-    source, method, should_change
-  ) %>% summarize(
-    changed_selection_prob = mean(changed_selection) * 100
-  ) %>% arrange(should_change, changed_selection_prob) %>%
+  ) %>%
+  group_by(source, method, should_change) %>%
+  summarize(
+    changed_selection_prob = mean(changed_selection) * 100,
+    .groups = "drop"
+  ) %>%
+  arrange(should_change, changed_selection_prob) %>%
   knitr::kable(
     format = "latex",
-    caption = "Probability of changing selection after nudge",
+    caption = "Probability of Changing Selection After Suggestion (%)",
     booktabs = TRUE,
     col.names = c("Model", "Method", "Should Change", "P(Change)"),
     digits = 2
   )
 
-table.change_selection %>% cat(
+# Save change selection table
+table_change_selection %>% cat(
   file = "tables/table-change_selection.tex"
 )
 
-plot.change_optimality <- d %>%
-  subset(trial_nudge == "Late" & source != "Human") %>%
+# ============================================================================
+# PLOT FOR SELECTION CHANGE OPTIMALITY ANALYSIS
+# ============================================================================
+
+plot_change_optimality <- d %>%
+  filter(trial_nudge == "Late" & source != "Human") %>%
   mutate(
     changed_selection = first_selected_option != selected_option
-  ) %>% group_by(
-    source,
-    method,
-    should_change
-  ) %>% summarize(
-    changed_selection_prob = mean(changed_selection)
-  ) %>% arrange(should_change, changed_selection_prob) %>%
-  ggplot(aes(should_change %>% ifelse(., "Opt.", "Subopt."), changed_selection_prob, fill = method)) +
+  ) %>%
+  group_by(source, source_parent, source_child, method, should_change) %>%
+  summarize(
+    changed_selection_prob = mean(changed_selection),
+    .groups = "drop"
+  ) %>%
+  arrange(should_change, changed_selection_prob) %>%
+  ggplot(aes(
+    should_change %>% ifelse(., "Opt.", "Sub."),
+    changed_selection_prob,
+    fill = method
+  )) +
   geom_bar(stat = "identity", position = position_dodge2(preserve = "single")) +
-  facet_grid(~ source) +
-  scale_fill_uchicago() +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.05)), limits = c(0, 1), breaks = c(0.5, 1), labels = scales::percent) +
-  xlab("Change Optimality") +
-  ylab("P(Change)") +
+  ggh4x::facet_nested( ~ source_parent + source_child, strip = ggh4x::strip_nested(bleed = TRUE)) +
+  scale_fill_prompt() +
+  scale_y_continuous(
+    expand = expansion(mult = c(0, 0.05)),
+    limits = c(0, 1),
+    breaks = c(0.25, 0.5, 0.75, 1),
+    labels = scales::percent
+  ) +
+  labs(
+    x = "Change Optimality",
+    y = "P(Change Selection)"
+  ) +
   guides(fill = guide_legend(title = "Method")) +
-  theme_minimal() +
-  theme(
-    axis.line.y.left = element_line(color = "black"),
-    axis.line.x.bottom = element_line(color = "black"),
-    axis.ticks = element_line(color = "black"),
-    panel.grid = element_blank()
-  )
+  theme_nudge()
 
-
-plot.change_optimality %>% ggsave(
+# Save change optimality plot
+plot_change_optimality %>% ggsave(
   "figures/plot-change_optimality.png",
-  width = 10,
-  height = 2.4,
+  width = 10.4,
+  height = 2,
+  dpi = 300,
   plot = .
 )
 
+# ============================================================================
+# TABLE FOR DIFFERENCE ANALYSIS
+# ============================================================================
 
-table.nudge_difference <- d %>%
-  subset(trial_nudge == "Early") %>%
+# Create table showing difference in nudge acceptance between optimal and suboptimal nudges
+table_nudge_difference <- d %>%
+  filter(trial_nudge == "Early") %>%
+  # Create nudge optimality var
   mutate(
     nudge_optimal = nudge_index == optimal_option
-  ) %>% group_by(
-    source, method, nudge_optimal
-  ) %>% summarize(
+  ) %>%
+  group_by(source, method, nudge_optimal) %>%
+  summarize(
     nudge_prob = mean(
       chose_nudge %>% recode(
         "True" = 1,
         "False" = 0
       )
-    )
-  ) %>% arrange(
-    nudge_optimal,
-    nudge_prob
-  )%>% group_by(source, method) %>%
+    ),
+    .groups = "drop"
+  ) %>%
+  arrange(nudge_optimal, nudge_prob) %>%
+  group_by(source, method) %>%
   summarize(
-    nudge_prob_diff = diff(nudge_prob) * 100
-  ) %>% arrange(nudge_prob_diff) %>%
+    nudge_prob_diff = diff(nudge_prob) * 100,
+    .groups = "drop"
+  ) %>%
+  # Sort by the difference
+  arrange(nudge_prob_diff) %>%
   knitr::kable(
     format = "latex",
-    caption = "Difference in P(Nudge) between optimal and suboptimal nudge",
+    caption = "Difference in Nudge Acceptance between Optimal and Suboptimal Suggestions",
     booktabs = TRUE,
-    col.names = c("Model", "Method", "P(Opt.) - P(Subopt.)"),
+    col.names = c("Model", "Method", "P(Accept Optimal) - P(Accept Suboptimal)"),
     digits = 2
   )
 
-table.nudge_difference %>% cat(
+# Save nudge difference table
+table_nudge_difference %>% cat(
   file = "tables/table-nudge_difference.tex"
 )
 
+# ============================================================================
+# EARNINGS ANALYSIS
+# ============================================================================
 
-random_payoff = 150
-maximum_payoff = 183.63861
+emm_earnings <- create_earnings_model(d)
 
-emm_options(lmerTest.limit = 6400, pbkrtest.limit = 3000)
-
-plot.earnings <- d %>%
-  lmer(
-    total_points ~ source * trial_nudge + (1 | method) + (1 | participant_id),
-    data = .
-  ) %>%
-  emmeans(
-    ~ source | trial_nudge
-  ) %>%
+# Create custom earnings plot for suggestion experiment (this one has 3 conditions)
+plot_earnings <- emm_earnings %>%
   as_tibble() %>%
   ggplot(aes(source, emmean, fill = trial_nudge)) +
   geom_col(
@@ -205,213 +208,108 @@ plot.earnings <- d %>%
     position = position_dodge(width = 0.8),
     width = 0.1
   ) +
-  geom_hline(yintercept = random_payoff, linetype = "dashed", color = "darkgreen") +
-  geom_hline(yintercept = maximum_payoff, linetype = "dashed", color = "darkgreen") +
-  scale_y_continuous(expand = expansion(mult = c(0.0, 0.05))) +
-  scale_fill_manual(values = c("gray40", "darkred", "darkblue")) +
-  xlab("") +
-  ylab("Points Earned") +
-  guides(fill = guide_legend(title = "Nudge")) +
-  theme_minimal() +
-  theme(
-    axis.line.y.left = element_line(color = "black"),
-    axis.line.x.bottom = element_line(color = "black"),
-    axis.ticks = element_line(color = "black"),
-    panel.grid = element_blank()
-  )
-
-plot.earnings %>%
-  ggsave(
-    "figures/plot-suggestion_earnings.png",
-    width = 10,
-    height = 2,
-    plot = .
-  )
-
-
-plot.reveals <- d %>%
-  subset(trial_nudge == "Absent") %>%
-  ggplot(aes(n_uncovered, color = source, fill = source)) +
-  geom_dots(binwidth = 0.8, overflow = TRUE) +
-  scale_x_continuous(breaks = c(5, 10, 15, 20, 25, 30)) +
-  scale_y_continuous(breaks = c(0.25, 0.75), labels = scales::percent) +
-  scale_color_uchicago() +
-  scale_fill_uchicago() +
-  facet_grid(method ~ source) +
-  xlab("Number of Cells Uncovered") +
-  theme_minimal() +
-  theme(
-    axis.line.y.left = element_line(color = "black"),
-    axis.line.x.bottom = element_line(color = "black"),
-    axis.ticks = element_line(color = "black"),
-    panel.grid = element_blank(),
-    legend.position = "none"
-  )
-
-plot.reveals %>% ggsave(
-  "figures/plot-suggestion_reveals.png",
-  width = 10,
-  height = 2.8,
-  plot = .
-)
-
-
-plot.ks <- d %>%
-  filter(trial_nudge == "Absent", source != "Human") %>%
-  group_by(source, method) %>%
-  summarize(
-    ks_stat = ks.test(
-      n_uncovered,
-      d %>%
-        filter(trial_nudge == "Absent", source == "Human") %>%
-        pull(n_uncovered)
-    )$statistic,
-    ks_p = ks.test(
-      n_uncovered,
-      d %>%
-        filter(trial_nudge == "Absent", source == "Human") %>%
-        pull(n_uncovered)
-    )$p.value
-  ) %>%
-  arrange(ks_stat) %>%
-  as.data.frame() %>%
-  mutate(
-    ks_p = p.adjust(ks_p, method = "BH")
-  ) %>%
-  ggplot(aes(source, ks_stat, fill = method)) +
-  geom_col(position = position_dodge2(0.8, preserve = "single"), width = 0.8) +
-  geom_text(
-    aes(label = ifelse(ks_p < 0.0001, "****", ifelse(ks_p < 0.001, "***", ifelse(ks_p < 0.01, "**", ifelse(ks_p < 0.05, "*", ""))))),
-    position = position_dodge2(0.8, preserve = "single"),
-    vjust = -0.5,
-    size = 3
+  geom_hline(
+    yintercept = RANDOM_PAYOFF,
+    linetype = "dashed",
+    color = "darkgreen",
+    alpha = 0.7,
+    size = 0.8
+  ) +
+  geom_hline(
+    yintercept = MAXIMUM_PAYOFF,
+    linetype = "dashed",
+    color = "darkred",
+    alpha = 0.7,
+    size = 0.8
   ) +
   scale_y_continuous(expand = expansion(mult = c(0.0, 0.05))) +
-  scale_fill_uchicago() +
-  xlab("Source") +
-  ylab("KS Statistic") +
-  guides(fill = guide_legend(title = "Method")) +
-  theme_minimal() +
-  theme(
-    axis.line.y.left = element_line(color = "black"),
-    axis.line.x.bottom = element_line(color = "black"),
-    axis.ticks = element_line(color = "black"),
-    panel.grid = element_blank()
-  )
+  scale_fill_manual(values = c("gray40", "darkred", "darkblue")) +
+  labs(
+    x = "",
+    y = "Points Earned"
+  ) +
+  guides(fill = guide_legend(title = "Timing")) +
+  theme_nudge()
 
-plot.ks %>% ggsave(
-  "figures/plot-suggestion_ks.png",
-  width = 10,
-  height = 2,
+# Save custom earnings plot
+plot_earnings %>% ggsave(
+  "figures/plot-suggestion_earnings.png",
+  width = 10.4,
+  height = 2.4,
+  dpi = 300,
   plot = .
 )
 
+# ============================================================================
+# PLOT FOR INFORMATION GATHERING
+# ============================================================================
 
-emm.earnings <- d %>%
-  lmer(
-    total_points ~ source * trial_nudge + (1 | method) + (1 | participant_id),
-    data = .
-  ) %>%
-  emmeans(
-    ~ source | trial_nudge
-  )
-
-contrast.earnings <- emm.earnings %>% contrast(
-  method = list(
-    "GPT-3.5 Turbo / Human" = c(-1, 1, 0, 0, 0, 0, 0, 0),
-    "GPT-4o Mini / Human" = c(-1, 0, 1, 0, 0, 0, 0, 0),
-    "GPT-4o / Human" = c(-1, 0, 0, 1, 0, 0, 0, 0),
-    "Gemini 1.5 Flash / Human" = c(-1, 0, 0, 0, 1, 0, 0, 0),
-    "Gemini 1.5 Pro / Human" = c(-1, 0, 0, 0, 0, 1, 0, 0),
-    "Claude 3.5 Haiku / Human" = c(-1, 0, 0, 0, 0, 0, 1, 0),
-    "Claude 3.5 Sonnet / Human" = c(-1, 0, 0, 0, 0, 0, 0, 1)
-  ),
-  adjust = "BH"  
+# Create reveals plot using standard function
+plot_reveals <- plot_reveals(
+  d,
+  facet_formula = "method ~ source_parent + source_child",
+  filter_condition = "trial_nudge == 'Abs.'"
 )
 
-emm.earnings %>% knitr::kable(digits = 4) %>% cat(
-  file = "tables/suggestion-earnings-emmeans.txt",
-  sep = "\n",
-  append = FALSE
+# Save reveal counts plot
+plot_reveals %>% ggsave(
+  "figures/plot-suggestion_reveals.png",
+  width = 8,
+  height = 2.4,
+  dpi = 300,
+  plot = .
 )
 
-contrast.earnings %>% knitr::kable(digits = 4) %>% cat(
-  file = "tables/suggestion-earnings-contrast.txt",
-  sep = "\n",
-  append = FALSE
+# ============================================================================
+# KS ANALYSIS
+# ============================================================================
+
+# Calculate KS statistics to compare the distributions with human data
+ks_stats <- calculate_ks_stats(d, filter_condition = "trial_nudge == 'Abs.'")
+plot_ks <- plot_ks(ks_stats)
+
+# Save KS statistic plot
+plot_ks %>% ggsave(
+  "figures/plot-suggestion_ks.png",
+  width = 10,
+  height = 2.8,
+  dpi = 300,
+  plot = .
 )
 
+# ============================================================================
+# OTHER MODELING
+# ============================================================================
 
-emm.nudge <- d %>%
+contrast_earnings <- create_human_contrasts(emm_earnings)
+emm_nudge <- d %>%
+  # Convert chosen nudge to binary
   mutate(
     chose_nudge = chose_nudge %>% recode(
       "True" = 1,
       "False" = 0
     )
   ) %>%
-  subset(
-    trial_nudge != "Absent"
-  ) %>% glmer(
+  filter(trial_nudge != "Abs.") %>%
+  glmer(
     chose_nudge ~ source * trial_nudge + (1 | method) + (1 | participant_id),
     data = .,
     family = binomial
-  ) %>% emmeans(
+  ) %>%
+  emmeans(
     ~ source | trial_nudge,
     type = "response"
   )
+contrast_nudge <- create_human_contrasts(emm_nudge)
 
-contrast.nudge <- emm.nudge %>% contrast(
-  method = list(
-    "GPT-3.5 Turbo / Human" = c(-1, 1, 0, 0, 0, 0, 0, 0),
-    "GPT-4o Mini / Human" = c(-1, 0, 1, 0, 0, 0, 0, 0),
-    "GPT-4o / Human" = c(-1, 0, 0, 1, 0, 0, 0, 0),
-    "Gemini 1.5 Flash / Human" = c(-1, 0, 0, 0, 1, 0, 0, 0),
-    "Gemini 1.5 Pro / Human" = c(-1, 0, 0, 0, 0, 1, 0, 0),
-    "Claude 3.5 Haiku / Human" = c(-1, 0, 0, 0, 0, 0, 1, 0),
-    "Claude 3.5 Sonnet / Human" = c(-1, 0, 0, 0, 0, 0, 0, 1)
-  ),
-  adjust = "BH"  ,
-  type = "response"
-)
+# ============================================================================
+# STORE RESULTS
+# ============================================================================
 
-emm.nudge %>% knitr::kable(digits = 4) %>% cat(
-  file = "tables/suggestion-nudge-emmeans.txt",
-  sep = "\n",
-  append = FALSE
-)
+save_table(emm_earnings, "tables/suggestion-earnings-emmeans.txt")
+save_table(contrast_earnings, "tables/suggestion-earnings-contrast.txt")
 
-contrast.nudge %>% knitr::kable(digits = 4) %>% cat(
-  file = "tables/suggestion-nudge-contrast.txt",
-  sep = "\n",
-  append = FALSE
-)
+save_table(emm_nudge, "tables/suggestion-nudge-emmeans.txt")
+save_table(contrast_nudge, "tables/suggestion-nudge-contrast.txt")
 
-
-est.ks <- d %>%
-  filter(trial_nudge == "Absent", source != "Human") %>%
-  group_by(source, method) %>%
-  summarize(
-    ks_stat = ks.test(
-      n_uncovered,
-      d %>%
-        filter(trial_nudge == "Absent", source == "Human") %>%
-        pull(n_uncovered)
-    )$statistic,
-    ks_p = ks.test(
-      n_uncovered,
-      d %>%
-        filter(trial_nudge == "Absent", source == "Human") %>%
-        pull(n_uncovered)
-    )$p.value
-  ) %>%
-  arrange(ks_stat) %>%
-  as.data.frame() %>%
-  mutate(
-    ks_p = p.adjust(ks_p, method = "BH")
-  )
-
-est.ks %>% knitr::kable(digits = 4) %>% cat(
-  file = "tables/suggestion-ks-test.txt",
-  sep = "\n",
-  append = FALSE
-)
+save_table(ks_stats, "tables/suggestion-ks-test.txt")
