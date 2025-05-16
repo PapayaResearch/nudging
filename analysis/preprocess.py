@@ -4,6 +4,7 @@ import argparse
 import yaml
 import numpy
 import pandas
+from tqdm.auto import tqdm
 
 
 NUDGES = [
@@ -32,7 +33,7 @@ def main():
 
     os.makedirs("data", exist_ok=True)
 
-    for nudge in NUDGES:
+    for nudge in tqdm(NUDGES, desc="Processing nudges"):
         files = glob.glob(
             os.path.join(
                 args.modeldata_dir,
@@ -51,12 +52,12 @@ def main():
                         "cfg.yaml"
                     )
                 )
-            ) for f in files
+            ) for f in tqdm(files, desc="Loading config files", total=len(files), leave=False)
         ]
 
         dfs = []
 
-        for f, cfg in zip(files, cfgs):
+        for f, cfg in tqdm(zip(files, cfgs), desc="Processing files", total=len(files), leave=False):
             df = pandas.read_csv(f)
             df["nudge"] = cfg["nudge"]["name"]
             df["cot"] = cfg["general"]["cot"]
@@ -107,6 +108,7 @@ def main():
 
             def highlight_reveals(row: pandas.Series) -> int:
                 uncovered_values = eval(row.uncovered_values)
+                uncovered_values = sorted(set(uncovered_values)) # Remove any duplicate reveals
                 n_cols = row.n_baskets
                 uncovered_valuerows = [v//n_cols for v in uncovered_values]
                 highlight_reveals = [v for v in uncovered_valuerows if v == row.nudge_index]
@@ -115,7 +117,7 @@ def main():
                 if len(highlight_reveals) > 0:
                     is_first_index_nudged = highlight_reveals[0] == row.nudge_index
 
-                assert len(highlight_reveals) <= n_cols
+                assert len(highlight_reveals) <= n_cols, (highlight_reveals, n_cols, row.n_prizes)
                 return len(highlight_reveals), is_first_index_nudged
 
             df["highlight_reveals"], df["is_first_index_nudged"] = zip(*df.apply(highlight_reveals, axis=1))
