@@ -1,3 +1,25 @@
+# Copyright (c) 2025
+# Manuel Cherep <mcherep@mit.edu>
+# Nikhil Singh <nsingh1@mit.edu>
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 import os
 import glob
 import argparse
@@ -59,9 +81,22 @@ def main():
 
         for f, cfg in tqdm(zip(files, cfgs), desc="Processing files", total=len(files), leave=False):
             df = pandas.read_csv(f)
+
+            token_cols = ["completion_tokens", "prompt_tokens", "total_tokens", "reasoning_tokens"]
+            for col in token_cols:
+                if col not in df.columns:
+                    df[col] = df.index.map(lambda x: [])
+                else:
+                    df[col] = df[col].map(eval)
+            
+            df["sum_reasoning_tokens"] = df["reasoning_tokens"].map(sum)
+            df["mean_reasoning_tokens"] = df["reasoning_tokens"].map(lambda x : numpy.mean(x) if len(x) > 0 else 0)
+
             df["nudge"] = cfg["nudge"]["name"]
             df["cot"] = cfg["general"]["cot"]
             df["source"] = cfg["general"]["model"]
+            if "reasoning_effort" in cfg["general"]:
+                df["source"] += "_%s" % cfg["general"]["reasoning_effort"]
             df["fs"] = cfg["general"]["fewshot"]
 
             dfs.append(df)
