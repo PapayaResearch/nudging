@@ -78,6 +78,8 @@ d_salience <- d_expanded %>%
     .groups = "drop"
   )
 
+salience_plots <- list()
+
 # Create a salience plot for each method type
 for (method_type in c("Base", "FS", "CoT")) {
   plot_salience <- d_salience %>%
@@ -108,45 +110,53 @@ for (method_type in c("Base", "FS", "CoT")) {
     mutate( # nesting() in complete() causes some issues, so we need to re-do this
       source_parent = case_when(
         source == "Human" ~ " ",
+        str_detect(as.character(source), "o3") ~ "o-Series",
         str_detect(as.character(source), "GPT") ~ "GPT",
         str_detect(as.character(source), "Gemini") ~ "Gemini",
         str_detect(as.character(source), "Claude") ~ "Claude",
-        source == "o3 Mini" ~ "  ",
-        TRUE ~ "Other"
+        TRUE ~ "  "
       ),
       source_child = case_when(
         source == " " ~ "Human",
         source == "GPT-3.5 Turbo" ~ "3.5 Turbo",
         source == "GPT-4o Mini" ~ "4o Mini",
         source == "GPT-4o" ~ "4o",
+        source == "GPT-5 Mini" ~ "5 Mini",
+        source == "GPT-5" ~ "5",
+        source == "GPT-5R-Min" ~ "5R-Min",
+        source == "GPT-5R-Low" ~ "5R-Low",
+        source == "GPT-5R-Med" ~ "5R-Med",
         source == "Gemini 1.5 Flash" ~ "1.5 Flash",
         source == "Gemini 1.5 Pro" ~ "1.5 Pro",
+        source == "Gemini 2.5 Flash" ~ "1.5 Flash",
+        source == "Gemini 2.5 Pro" ~ "2.5 Pro",
+        source == "Gemini 2.5 Pro-Min" ~ "2.5 Pro-Min",
+        source == "Gemini 2.5 Pro-Med" ~ "2.5 Pro-Med",
         source == "Claude 3 Haiku" ~ "3 Haiku",
         source == "Claude 3.5 Sonnet" ~ "3.5 Sonnet",
+        source == "Claude 4.5 Sonnet" ~ "4.5 Sonnet",
+        source == "Claude 4.5 Sonnet-Low" ~ "4.5 Sonnet-Low",
+        source == "Claude 4.5 Sonnet-Med" ~ "4.5 Sonnet-Med",
         source == "o3 Mini" ~ "o3 Mini",
+        source == "o3" ~ "o3",
         TRUE ~ as.character(source)
       )
     ) %>%
-    mutate(
-      source_parent = factor(source_parent, levels = c(" ", "GPT", "Gemini", "Claude", "  ")),
-      source_child = factor(source_child, levels = c(
-        "Human",
-        "3.5 Turbo", "4o Mini", "4o",
-        "1.5 Flash", "1.5 Pro",
-        "3 Haiku", "3.5 Sonnet",
-        "o3 Mini"
-      ))
-    ) %>%
     ggplot(aes(x = col, y = row, fill = n_reveals)) +
     geom_tile() +
-    ggh4x::facet_grid2(
+    ggh4x::facet_nested(
       grid ~ source_parent + source_child,
       scales = "free",
       independent = "all",
-      strip = ggh4x::strip_nested(bleed = TRUE)
+      nest_line = element_line(
+        linewidth = 0.8,
+        color = "black"
+      )
     ) +
     scale_y_reverse() +
-    scale_fill_viridis_c() +
+    scale_fill_viridis_c(
+      limits = c(0, 60)
+    ) +
     guides(fill = guide_colorbar(title = "Number of Reveals")) +
     theme_minimal() +
     theme(
@@ -159,10 +169,36 @@ for (method_type in c("Base", "FS", "CoT")) {
 
   # Save plot with method name in the filename
   plot_salience %>% ggsave(
-    paste("figures/plot-salience_", method_type, ".png", sep = ""),
-    width = ifelse(method_type == "FS", 9.2, 12),
+    paste("figures/plot-salience_", method_type, ".pdf", sep = ""),
+    width = ifelse(method_type == "FS", 12.2, 14),
     height = 4.5,
     dpi = 300,
     plot = .
   )
+  
+  salience_plots[[method_type]] <- plot_salience
 }
+
+# Combine salience plots into a single figure
+p.salience_combined <- (salience_plots[["Base"]] + ggtitle("A. Base")) /
+  (salience_plots[["CoT"]] + ggtitle("B. CoT")) /
+  (salience_plots[["FS"]] + ggtitle("C. FS")) +
+  plot_layout(
+    guides = "collect",
+    axes = "collect"
+  ) &
+  theme(
+    legend.position = "bottom",
+    panel.spacing.y = unit(0, "pt"),
+    plot.title = element_text(face = "bold", size = 12, hjust = 0)
+  )
+
+p.salience_combined
+
+p.salience_combined %>%
+  ggsave(
+    "figures/plot-salience_combined.pdf",
+    width = 10,
+    height = 10,
+    plot = .
+  )
