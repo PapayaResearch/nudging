@@ -3,6 +3,8 @@ keys/
 results
 logs
 outputs
+figures/
+tables/
 .DS_Store
 
 # Byte-compiled / optimized / DLL files

@@ -78,24 +78,48 @@ data_suggestion <- read.csv("data/data-suggestion.csv") %>%
 # REASONING TOKEN ANALYSIS
 # ============================================================================
 
-model_reasoning_default <- fit_reasoning_model(data_default)
-model_reasoning_highlight <- fit_reasoning_model(data_highlight)
-model_reasoning_suggestion <- fit_reasoning_model(data_suggestion)
+data_default.nohuman <- data_default %>%
+  subset(model != "Human") %>%
+  droplevels() %>%
+  mutate(
+    model = model %>% relevel(ref = "GPT-5"),
+    reasoning_effort = reasoning_effort %>% relevel(ref = "Minimal")
+  )
 
-model_reasoning_default.total <- fit_reasoning_model(data_default, outcome.var = "total_tokens")
-model_reasoning_highlight.total <- fit_reasoning_model(data_highlight, outcome.var = "total_tokens")
-model_reasoning_suggestion.total <- fit_reasoning_model(data_suggestion, outcome.var = "total_tokens")
+data_highlight.nohuman <- data_highlight %>%
+  subset(model != "Human") %>%
+  droplevels() %>%
+  mutate(
+    model = model %>% relevel(ref = "GPT-5"),
+    reasoning_effort = reasoning_effort %>% relevel(ref = "Minimal")
+  )
+
+data_suggestion.nohuman <- data_suggestion %>%
+  subset(model != "Human") %>%
+  droplevels() %>%
+  mutate(
+    model = model %>% relevel(ref = "GPT-5"),
+    reasoning_effort = reasoning_effort %>% relevel(ref = "Minimal")
+  )
+
+model_reasoning_default <- fit_reasoning_model(data_default.nohuman)
+model_reasoning_highlight <- fit_reasoning_model(data_highlight.nohuman)
+model_reasoning_suggestion <- fit_reasoning_model(data_suggestion.nohuman)
+
+model_reasoning_default.total <- fit_reasoning_model(data_default.nohuman, outcome.var = "total_tokens")
+model_reasoning_highlight.total <- fit_reasoning_model(data_highlight.nohuman, outcome.var = "total_tokens")
+model_reasoning_suggestion.total <- fit_reasoning_model(data_suggestion.nohuman, outcome.var = "total_tokens")
 
 emm_reasoning_default <- model_reasoning_default %>%
-  compute_emmeans_pairwise(data_default %>% subset(source != "Human") %>% droplevels()) %>%
+  compute_emmeans_pairwise(data_default.nohuman) %>%
   mutate(nudge_type = "Default")
 
 emm_reasoning_highlight <- model_reasoning_highlight %>%
-  compute_emmeans_pairwise(data_highlight %>% subset(source != "Human") %>% droplevels()) %>%
+  compute_emmeans_pairwise(data_highlight.nohuman) %>%
   mutate(nudge_type = "Highlight")
 
 emm_reasoning_suggestion <- model_reasoning_suggestion %>%
-  compute_emmeans_trt_vs_ctrl(data_suggestion %>% subset(source != "Human") %>% droplevels()) %>%
+  compute_emmeans_trt_vs_ctrl(data_suggestion.nohuman) %>%
   mutate(nudge_type = "Suggestion")
 
 emm_reasoning <- bind_rows(

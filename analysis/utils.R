@@ -344,8 +344,6 @@ calculate_ks_stats <- function(
 
 fit_reasoning_model <- function(data, outcome.var = "mean_reasoning_tokens") {
   data %>%
-    subset(model != "Human") %>%
-    droplevels() %>%
     feols(
       as.formula(sprintf("%s ~ model * reasoning_effort * trial_nudge", outcome.var)),
       data = .,
