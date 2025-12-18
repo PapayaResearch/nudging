@@ -352,7 +352,7 @@ fit_reasoning_model <- function(data, outcome.var = "mean_reasoning_tokens") {
 }
 
 analyze_earnings <- function(data, condition_var = "trial_nudge") {
-  formula_str <- sprintf("total_points ~ source * %s | method", condition_var)
+  formula_str <- sprintf("total_points ~ source * %s * method", condition_var)
   model <- feols(as.formula(formula_str), data = data, vcov = cluster ~ participant_id)
   emm <- emmeans(model, as.formula(sprintf("~ source | %s", condition_var)), data = data)
   return(list(model = model, emm = emm))
