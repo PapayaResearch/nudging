@@ -1,9 +1,9 @@
-# LLM Agents Are Hypersensitive to Nudges
+# AI Agents Are Sensitive to Nudges
 
 > [!NOTE]
-> Code for the paper **[LLM Agents Are Hypersensitive to Nudges](https://arxiv.org/abs/2505.11584)**. An initial version was submitted to the **NeurIPS Behavioral Machine Learning 2024**, and was accepted as a spotlight paper **[Superficial Alignment, Subtle Divergence, and Nudge Sensitivity in LLM Decision-Making](https://openreview.net/forum?id=chbdsWgjS6)**.
+> Code for the paper **[AI Agents Are Sensitive to Nudges](https://arxiv.org/abs/2505.11584)**. An initial version was submitted to the **NeurIPS Behavioral Machine Learning 2024**, and was accepted as a spotlight paper **[Superficial Alignment, Subtle Divergence, and Nudge Sensitivity in LLM Decision-Making](https://openreview.net/forum?id=chbdsWgjS6)**.
 
-LLMs are being set loose in complex, real-world environments involving sequential decision-making and tool use. Often, this involves making choices on behalf of human users. However, not much is known about the distribution of such choices, and how susceptible they are to different choice architectures. We perform a case study with a few such LLM models on a multi-attribute tabular decision-making problem, under canonical nudges such as the default option, suggestions, and information highlighting, as well as additional prompting strategies. We show that, despite superficial similarities to human choice distributions, such models differ in subtle but important ways. First, they show much higher susceptibility to the nudges. Second, they diverge in points earned, being affected by factors like the idiosyncrasy of available prizes. Third, they diverge in information acquisition strategies: e.g. incurring substantial cost to reveal too much information, or selecting without revealing any. Moreover, we show that simple prompt strategies like zero-shot chain of thought (CoT) can shift the choice distribution, and few-shot prompting with human data can induce greater alignment. Yet, none of these methods resolve the sensitivity of these models to nudges. Finally, we show how optimal nudges optimized with a human resource-rational model can similarly increase LLM performance for some models. All these findings suggest that behavioral tests are needed before deploying models as agents or assistants acting on behalf of users in complex environments.
+Large language models (LLMs) are increasingly deployed as autonomous agents that make choices and use tools on behalf of users. Yet, we have limited evidence about how their decisions are shaped by their environment. We adapt a human decision-making task to test leading LLMs under four forms of \textit{choice architecture}: defaults, suggestions, information highlighting, and ``optimal'' nudges derived from a resource-rational model of human choice. We treat human behavior as a baseline for predictable sensitivity to such interventions. Across models and prompting strategies, LLMs often depart substantially from this baseline. They sometimes pay excessive costs to acquire information, sometimes ignore available information, and, most crucially, are far more responsive to nudges than humans, such that weak cues that slightly shift human behavior have larger effects on model choices, toward both better and worse outcomes. Chain-of-thought prompting and in-context human data do not reliably stabilize behavior. Recent reasoning-optimized LLMs can, in some configurations, restore more human-level sensitivity to nudges, but do so inconsistently and at substantial computational cost. These results point to an important and largely neglected safety concern: LLM agents can be behaviorally brittle under subtle changes in choice architecture, even in the absence of adversarial settings.
 
 > [!TIP]
 > For more details about the original setup, we refer to [Optimal Nudging For Cognitively Bounded Agents](https://psycnet.apa.org/record/2024-21499-001).
@@ -52,6 +52,11 @@ Please cite this work as follows:
   author={Cherep, Manuel and Maes, Pattie and Singh, Nikhil},
   journal={arXiv preprint arXiv:2505.11584},
   year={2025}
+}
+@inproceedings{cherep2024superficial,
+  title={Superficial Alignment, Subtle Divergence, and Nudge Sensitivity in LLM Decision-Making},
+  author={Cherep, Manuel and Singh, Nikhil and Maes, Patricia},
+  booktitle={NeurIPS 2024 Workshop on Behavioral Machine Learning}
 }
 ```
 
