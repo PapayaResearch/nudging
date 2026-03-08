@@ -21,6 +21,8 @@ general:
   tool_choice: required
   # Maximum number of tokens in the response from the API
   max_tokens: 300
+  # Controls the number of reasoning tokens generated
+  reasoning_effort: medium
   # Number of participants from the original data
   participants: 10
   # Offset the number of participants to be able to dynamically collect more
@@ -47,6 +49,7 @@ general:
     tool_choice: ${general.tool_choice}
     temperature: ${general.temperature}
     max_tokens: ${general.max_tokens}
+    reasoning_effort: ${general.reasoning_effort}
     additional_drop_params: ${general.additional_drop_params}
     delay: ${general.delay}
 

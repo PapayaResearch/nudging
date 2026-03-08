@@ -29,6 +29,7 @@ def create_api_call(
         tool_choice,
         temperature,
         max_tokens,
+        reasoning_effort,
         additional_drop_params,
         delay
 ):
@@ -43,5 +44,7 @@ def create_api_call(
             tool_choice=tool_choice,
             temperature=temperature,
             max_tokens=max_tokens,
+            # reasoning_effort=reasoning_effort,
+            thinking={"type": "enabled", "budget_tokens": 8192},
             additional_drop_params=list(additional_drop_params)
         ))[1]

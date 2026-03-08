@@ -179,6 +179,11 @@ class MultiAttribute:
                 args["quiz"] = "You didn't pass the quiz."
                 quiz_attempts += 1
 
+            # Just for Claude
+            thinking_blocks = response.choices[0].message.provider_specific_fields["thinking_blocks"]
+            content = thinking_blocks if thinking_blocks else []
+            messages.append({"role": "assistant", "content": content})
+
             # Create a message containing the result of the function call
             tool_response, function_call_result_message = render_tool_call(tool_call, args)
             messages.append(tool_response)
@@ -289,6 +294,10 @@ class Default(MultiAttribute):
             # Game state
             selected_basket = None
             uncovered_values = []
+            completion_tokens = []
+            prompt_tokens = []
+            total_tokens = []
+            reasoning_tokens = []
             cost = 0
             net_earnings = 0
             gross_earnings = 0
@@ -336,6 +345,14 @@ class Default(MultiAttribute):
                     tool_call = response.choices[0].message.tool_calls[0]
                     action = tool_call.function.name
                     args = json.loads(tool_call.function.arguments)
+                    usage = response.usage
+                    completion_tokens.append(usage.completion_tokens)
+                    prompt_tokens.append(usage.prompt_tokens)
+                    total_tokens.append(usage.total_tokens)
+                    if usage.completion_tokens_details is None:
+                        reasoning_tokens.append(0)
+                    else:
+                        reasoning_tokens.append(usage.completion_tokens_details.reasoning_tokens)
                 else:
                     # If few shot learning, ignore responses and simulate it
                     if row.trial_nudge == "default" and not chose_default:
@@ -462,6 +479,11 @@ class Default(MultiAttribute):
                 args[action] = new_game
                 logging.info(new_game)
 
+                # Just for Claude
+                thinking_blocks = response.choices[0].message.provider_specific_fields["thinking_blocks"]
+                content = thinking_blocks if thinking_blocks else []
+                messages.append({"role": "assistant", "content": content})
+
                 # Create a message containing the result of the function call
                 tool_response, function_call_result_message = render_tool_call(tool_call, args)
                 messages.append(tool_response)
@@ -485,8 +507,12 @@ class Default(MultiAttribute):
                         "net_earnings": net_earnings,
                         "accepted_default": accepted_default,
                         "chose_nudge": chose_nudge,
-                        "uncovered_values": uncovered_values
-                     }
+                        "uncovered_values": uncovered_values,
+                        "completion_tokens": completion_tokens,
+                        "prompt_tokens": prompt_tokens,
+                        "total_tokens": total_tokens,
+                        "reasoning_tokens": reasoning_tokens
+                    }
                 )
         return results, messages
 
@@ -536,7 +562,7 @@ class Suggestion(MultiAttribute):
     def render_nudge(self, value, prize_idx, basket=None):
         prize = chr(prize_idx + 65)
         if basket is None:
-            return f"We found another basket with {value} {prize} prizes!"
+            return f"We found another basket with {value} {prize} prizes! (You MUST use tools/functions in every response or you will fail!)"
         else:
             return f"Consider basket {basket} - it has {value} {prize} prizes!"
 
@@ -588,6 +614,10 @@ class Suggestion(MultiAttribute):
             first_selected_basket = None
             selected_basket = None
             uncovered_values = []
+            completion_tokens = []
+            prompt_tokens = []
+            total_tokens = []
+            reasoning_tokens = []
             cost = 0
             net_earnings = 0
             gross_earnings = 0
@@ -654,11 +684,20 @@ class Suggestion(MultiAttribute):
             while selected_basket is None:
                 if not fewshot_learning:
                     response = self.api_call(messages=messages, tools=tools)
+                    print(response)
 
                     # Parse response
                     tool_call = response.choices[0].message.tool_calls[0]
                     action = tool_call.function.name
                     args = json.loads(tool_call.function.arguments)
+                    usage = response.usage
+                    completion_tokens.append(usage.completion_tokens)
+                    prompt_tokens.append(usage.prompt_tokens)
+                    total_tokens.append(usage.total_tokens)
+                    if usage.completion_tokens_details is None:
+                        reasoning_tokens.append(0)
+                    else:
+                        reasoning_tokens.append(usage.completion_tokens_details.reasoning_tokens)
                 else:
                     # If few shot learning, ignore responses and simulate it
                     if nudge == "post-supersize":
@@ -814,6 +853,11 @@ class Suggestion(MultiAttribute):
                 args[action] = new_game
                 logging.info(new_game)
 
+                # Just for Claude
+                thinking_blocks = response.choices[0].message.provider_specific_fields["thinking_blocks"]
+                content = thinking_blocks if thinking_blocks else []
+                messages.append({"role": "assistant", "content": content})
+
                 # Create a message containing the result of the function call
                 tool_response, function_call_result_message = render_tool_call(tool_call, args)
                 messages.append(tool_response)
@@ -839,7 +883,11 @@ class Suggestion(MultiAttribute):
                         "gross_earnings": gross_earnings,
                         "net_earnings": net_earnings,
                         "chose_nudge": chose_nudge,
-                        "uncovered_values": uncovered_values
+                        "uncovered_values": uncovered_values,
+                        "completion_tokens": completion_tokens,
+                        "prompt_tokens": prompt_tokens,
+                        "total_tokens": total_tokens,
+                        "reasoning_tokens": reasoning_tokens
                      }
                 )
         return results, messages
@@ -910,6 +958,10 @@ class Highlight(MultiAttribute):
             # Game state
             selected_basket = None
             uncovered_values = []
+            completion_tokens = []
+            prompt_tokens = []
+            total_tokens = []
+            reasoning_tokens = []
             cost = 0
             net_earnings = 0
             gross_earnings = 0
@@ -944,6 +996,14 @@ class Highlight(MultiAttribute):
                     tool_call = response.choices[0].message.tool_calls[0]
                     action = tool_call.function.name
                     args = json.loads(tool_call.function.arguments)
+                    usage = response.usage
+                    completion_tokens.append(usage.completion_tokens)
+                    prompt_tokens.append(usage.prompt_tokens)
+                    total_tokens.append(usage.total_tokens)
+                    if usage.completion_tokens_details is None:
+                        reasoning_tokens.append(0)
+                    else:
+                        reasoning_tokens.append(usage.completion_tokens_details.reasoning_tokens)
                 else:
                     # If few shot learning, ignore responses and simulate it
                     if human_uncovered_values:
@@ -1019,6 +1079,11 @@ class Highlight(MultiAttribute):
                 args[action] = new_game
                 logging.info(new_game)
 
+                # Just for Claude
+                thinking_blocks = response.choices[0].message.provider_specific_fields["thinking_blocks"]
+                content = thinking_blocks if thinking_blocks else []
+                messages.append({"role": "assistant", "content": content})
+
                 # Create a message containing the result of the function call
                 tool_response, function_call_result_message = render_tool_call(tool_call, args)
                 messages.append(tool_response)
@@ -1040,7 +1105,11 @@ class Highlight(MultiAttribute):
                         "selected_option": selected_basket-1,
                         "gross_earnings": gross_earnings,
                         "net_earnings": net_earnings,
-                        "uncovered_values": uncovered_values
+                        "uncovered_values": uncovered_values,
+                        "completion_tokens": completion_tokens,
+                        "prompt_tokens": prompt_tokens,
+                        "total_tokens": total_tokens,
+                        "reasoning_tokens": reasoning_tokens
                      }
                 )
         return results, messages
@@ -1081,6 +1150,10 @@ class Optimal(MultiAttribute):
             # Game state
             selected_basket = None
             uncovered_values = []
+            completion_tokens = []
+            prompt_tokens = []
+            total_tokens = []
+            reasoning_tokens = []
             cost = 0
             net_earnings = 0
             gross_earnings = 0
@@ -1112,6 +1185,14 @@ class Optimal(MultiAttribute):
                 tool_call = response.choices[0].message.tool_calls[0]
                 action = tool_call.function.name
                 args = json.loads(tool_call.function.arguments)
+                usage = response.usage
+                completion_tokens.append(usage.completion_tokens)
+                prompt_tokens.append(usage.prompt_tokens)
+                total_tokens.append(usage.total_tokens)
+                if usage.completion_tokens_details is None:
+                    reasoning_tokens.append(0)
+                else:
+                    reasoning_tokens.append(usage.completion_tokens_details.reasoning_tokens)
 
                 if action == "reveal":
                     logging.info("REVEAL: {}".format(args))
@@ -1186,7 +1267,11 @@ class Optimal(MultiAttribute):
                         "nudge_type": row.nudge_type,
                         "participant_id": row.participant_id,
                         "gross_earnings": gross_earnings,
-                        "net_earnings": net_earnings
+                        "net_earnings": net_earnings,
+                        "completion_tokens": completion_tokens,
+                        "prompt_tokens": prompt_tokens,
+                        "total_tokens": total_tokens,
+                        "reasoning_tokens": reasoning_tokens
                      }
                 )
         return results, messages
