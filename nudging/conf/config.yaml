@@ -25,14 +25,14 @@ general:
   participants: 10
   # Offset the number of participants to be able to dynamically collect more
   offset: 0
+  # Offset the number of trials to resume from a given trial
+  trial_offset: 0
   # Temperature for the model (OpenAI's default is 1.0)
   temperature: 0.2
   # Number of examples the model sees before playing.
   fewshot: 0
   # Include chain-of-Thought prompt with the experiments
   cot: False
-  # Include practice in the context window or not
-  include_practice: True
   # Random seed for reproducibility.
   seed: 42
   # Drop params specific params that the model doesn't support

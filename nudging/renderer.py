@@ -26,20 +26,20 @@ import json
 def render(*args):
     return "\n".join(args)
 
-def render_prize(idx, weight):
-    # e.g. A: 2 points
-    return chr(idx + 65) + ": " + str(weight) + " points"
+def render_prize(idx, weight, name):
+    # e.g. A (Rooms): 8 points
+    return chr(idx + 65) + f" ({name}): " + str(weight) + " points"
 
-def render_table(payoff_matrix, revealed, weights):
-    # e.g. | Prizes       | Basket 1 | Basket 2 |
-    #      |--------------|----------|----------|
-    #      | A: 16 points | 8        | 2        |
-    #      | B: 14 points | ?        | ?        |
+def render_table(payoff_matrix, revealed, weights, feature_names):
+    # e.g. | Features              | Neighborhood 1 | Neighborhood 2 |
+    #      |-----------------------|----------------|----------------|
+    #      | A (Rooms): 8 points   | 8              | 2              |
+    #      | B (Safety): 5 points  | ?              | ?              |
     n_baskets = payoff_matrix.shape[1]
-    matrix = [["Prizes"] + [f"Basket {i+1}" for i in range(n_baskets)]]
+    matrix = [["Features"] + [f"Neighborhood {i+1}" for i in range(n_baskets)]]
     for idx, (row, row_idx) in enumerate(zip(payoff_matrix, revealed)):
         matrix.append(
-            [render_prize(idx, weights[idx])] + [str(value)
+            [render_prize(idx, weights[idx], feature_names[idx])] + [str(value)
                                                  if flag else "?"
                                                  for value, flag in zip(row, row_idx)]
         )
@@ -55,26 +55,19 @@ def render_table(payoff_matrix, revealed, weights):
     return table
 
 def render_header(total_earnings, is_practice, n_trial, n_total_trials):
-    # e.g. Practice game 1 of 2\nTotal earnings: $1.353
-    if is_practice:
-        header = f"Practice game {n_trial} of {n_total_trials}\n"
-    else:
-        header = f"Test game {n_trial} of {n_total_trials}\n"
-
-    header += f"Total earnings: ${total_earnings:.3f}"
-    return header
+    return f"Round {n_trial} of {n_total_trials}"
 
 def render_cost(cost):
     # e.g. Total accumulated cost: 4 points
     return f"Total accumulated cost: {cost} points"
 
 def render_result(weights, points, total_points, net_earnings):
-    prizes_list = [f"{v} {chr(k + 65)} prizes"
+    prizes_list = [f"{v:.1f} on {chr(k + 65)}"
                    for k,v in zip(range(len(weights)), points)]
     prizes = ", ".join(prizes_list[:-1]) + ", and " + prizes_list[-1]
 
-    result = f"You won {prizes}, totaling {total_points} points."
-    result += f"\nTotal earnings (prize values minus reveal cost): ${net_earnings:.3f}"
+    result = f"You scored {prizes}, totaling {total_points:.1f} utility points."
+    result += f"\nTotal net utility (after lookup costs): {net_earnings / 0.00033333333:.1f} points."
     return result
 
 def render_tool_call(tool_call, args):

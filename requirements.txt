@@ -1,5 +1,7 @@
 litellm
 pandas
+numpy
 tqdm
 rich
 hydra-core
+statsmodels

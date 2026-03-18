@@ -46,6 +46,7 @@ def main(cfg: Config) -> None:
     ##############################################
 
     assert litellm.supports_function_calling(model=cfg.general.model) == True
+    assert cfg.general.fewshot == 0, "Few-shot learning is not supported with the current dataset"
 
     ##############################################
     # Create results and log directories
@@ -112,9 +113,6 @@ def main(cfg: Config) -> None:
             {"role": "system", "content": nudge.initial_prompt},
         ]
 
-        # Quiz
-        messages = nudge.run_quiz(messages)
-
         # Few-shot examples
         if cfg.general.fewshot > 0:
             _, messages = nudge.run_trials(
@@ -128,28 +126,9 @@ def main(cfg: Config) -> None:
         if cfg.general.cot:
             messages.append({"role": "user", "content": "Let's think step by step"})
 
-        # Practice games
-        messages.append({"role": "user", "content": nudge.practice_prompt})
-        results, practice_messages = nudge.run_trials(
-            nudge.get_practice_data(pid),
-            messages,
-            is_practice=True,
-            fewshot_learning=False
-        )
-        if cfg.general.include_practice:
-            # TODO: This is only including the last game of practice
-            # so run_trials needs to (like fewshot collect all messages)
-            messages = practice_messages
-
-        if not os.path.exists(results_file):
-            pd.DataFrame(results).to_csv(results_file, mode='w', header=True, index=False)
-        else:
-            pd.DataFrame(results).to_csv(results_file, mode='a', header=False, index=False)
-
         # Test games
-        messages.append({"role": "user", "content": nudge.test_prompt})
         results, _ = nudge.run_trials(
-            nudge.get_test_data(pid),
+            nudge.get_test_data(pid).iloc[cfg.general.trial_offset:],
             messages,
             is_practice=False,
             fewshot_learning=False

@@ -63,14 +63,14 @@ class General:
     participants: int
     # Offset the number of participants to be able to dynamically collect more
     offset: int
+    # Offset the number of trials to resume from a given trial
+    trial_offset: int
     # Temperature for the model (OpenAI's default is 1.0)
     temperature: float
     # Number of examples the model sees before playing, or null
     fewshot: Any
     # Include chain-of-Thought prompt with the experiments
     cot: bool
-    # Include practice in the context window or not
-    include_practice: bool
     # Random seed for reproducibility
     seed: int
     # Drop params specific params that the model doesn't support
