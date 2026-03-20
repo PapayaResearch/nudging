@@ -23,8 +23,10 @@
 import pandas as pd
 import logging
 import os
+import threading
 import hydra
 import litellm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from tqdm.auto import tqdm
 from omegaconf import OmegaConf
@@ -127,13 +129,29 @@ def main(cfg: Config) -> None:
             messages.append({"role": "user", "content": "Let's think step by step"})
 
         # Test games
-        results, _ = nudge.run_trials(
-            nudge.get_test_data(pid).iloc[cfg.general.trial_offset:],
-            messages,
-            is_practice=False,
-            fewshot_learning=False
-        )
-        pd.DataFrame(results).to_csv(results_file, mode='a', header=False, index=False)
+        test_data = nudge.get_test_data(pid)
+        trial_set = set(cfg.general.trial_list)
+        indices = [i for i, row in enumerate(test_data.itertuples())
+                   if not trial_set or row.trial_num in trial_set]
+        csv_lock = threading.Lock()
+
+        def run_trial(i):
+            results, _ = nudge.run_trials(
+                test_data.iloc[[i]],
+                messages,
+                is_practice=False,
+                fewshot_learning=False,
+                trial_index=i,
+                total_trials=len(test_data)
+            )
+            with csv_lock:
+                write_header = not os.path.exists(results_file)
+                pd.DataFrame(results).to_csv(results_file, mode='a', header=write_header, index=False)
+
+        with ThreadPoolExecutor(max_workers=cfg.general.max_workers) as executor:
+            futures = {executor.submit(run_trial, i): i for i in indices}
+            for future in as_completed(futures):
+                future.result()
 
 if __name__ == "__main__":
     main()

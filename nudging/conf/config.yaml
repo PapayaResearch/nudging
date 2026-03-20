@@ -25,8 +25,10 @@ general:
   participants: 10
   # Offset the number of participants to be able to dynamically collect more
   offset: 0
-  # Offset the number of trials to resume from a given trial
-  trial_offset: 0
+  # List of trial_num values to run; if empty, run all trials
+  trial_list: []
+  # Number of parallel workers for trial execution
+  max_workers: 1
   # Temperature for the model (OpenAI's default is 1.0)
   temperature: 0.2
   # Number of examples the model sees before playing.

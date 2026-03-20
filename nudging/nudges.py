@@ -178,7 +178,7 @@ class Default(MultiAttribute):
     def render_nudge(self, idx):
         return f"Do you want to choose neighborhood {idx+1}?\nIt scores the highest when all feature weights are equally valuable."
 
-    def run_trials(self, df, initial_messages, is_practice, fewshot_learning):
+    def run_trials(self, df, initial_messages, is_practice, fewshot_learning, trial_index=None, total_trials=None):
         # Global state
         total_earnings = 1.3 # dollars
 
@@ -197,8 +197,8 @@ class Default(MultiAttribute):
             nudge = row.trial_nudge == "default"
             nudge_index = int(row.nudge_index)
             reveal_cost = row.cost
-            n_total_trials = df.shape[0]
-            n_trial = (idx % n_total_trials) + 1
+            n_total_trials = total_trials if total_trials is not None else df.shape[0]
+            n_trial = (trial_index + 1) if trial_index is not None else (idx % n_total_trials) + 1
 
             # Game state
             selected_basket = None
@@ -471,7 +471,7 @@ class Suggestion(MultiAttribute):
         )
         return selected_basket_idx+1
 
-    def run_trials(self, df, initial_messages, is_practice, fewshot_learning):
+    def run_trials(self, df, initial_messages, is_practice, fewshot_learning, trial_index=None, total_trials=None):
         # Global state
         total_earnings = 1.3 # dollars
 
@@ -493,8 +493,8 @@ class Suggestion(MultiAttribute):
             shown_baskets = int(row.shown_baskets)
             selected_option = int(row.selected_option)
             reveal_cost = row.cost
-            n_total_trials = df.shape[0]
-            n_trial = (idx % n_total_trials) + 1
+            n_total_trials = total_trials if total_trials is not None else df.shape[0]
+            n_trial = (trial_index + 1) if trial_index is not None else (idx % n_total_trials) + 1
             human_uncovered_values_original = ast.literal_eval(row.uncovered_values)
             human_uncovered_values = ast.literal_eval(row.uncovered_values)
 
@@ -798,7 +798,7 @@ class Highlight(MultiAttribute):
         nudge = "Cost of looking up feature " + ", ".join(costs_str[:-1]) + ", and " + costs_str[-1]
         return nudge
 
-    def run_trials(self, df, initial_messages, is_practice, fewshot_learning):
+    def run_trials(self, df, initial_messages, is_practice, fewshot_learning, trial_index=None, total_trials=None):
         # Global state
         total_earnings = 1.3 # dollars
 
@@ -817,8 +817,8 @@ class Highlight(MultiAttribute):
             nudge_index = int(row.highlight_index)
             original_cost_matrix = np.array(ast.literal_eval(row.original_cost_matrix))
             reveal_cost_array = np.apply_along_axis(np.max, axis=1, arr=original_cost_matrix)
-            n_total_trials = df.shape[0]
-            n_trial = (idx % n_total_trials) + 1
+            n_total_trials = total_trials if total_trials is not None else df.shape[0]
+            n_trial = (trial_index + 1) if trial_index is not None else (idx % n_total_trials) + 1
             human_uncovered_values = ast.literal_eval(row.uncovered_values)
 
             # Game state
@@ -971,7 +971,7 @@ class Optimal(MultiAttribute):
     ):
         raise NotImplementedError("Few shot learning is not supported for this nudge")
 
-    def run_trials(self, df, initial_messages, is_practice, fewshot_learning):
+    def run_trials(self, df, initial_messages, is_practice, fewshot_learning, trial_index=None, total_trials=None):
         # Global state
         total_earnings = 1.3 # dollars
 
@@ -989,8 +989,8 @@ class Optimal(MultiAttribute):
             revealed = (cost_matrix == 0) # reveal initial cells
             weights = np.array(ast.literal_eval(row.weights))
             reveal_cost = int(np.array(ast.literal_eval(row.cost_matrix)).max())
-            n_total_trials = df.shape[0]
-            n_trial = (idx % n_total_trials) + 1
+            n_total_trials = total_trials if total_trials is not None else df.shape[0]
+            n_trial = (trial_index + 1) if trial_index is not None else (idx % n_total_trials) + 1
 
             # Game state
             selected_basket = None

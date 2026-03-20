@@ -63,8 +63,10 @@ class General:
     participants: int
     # Offset the number of participants to be able to dynamically collect more
     offset: int
-    # Offset the number of trials to resume from a given trial
-    trial_offset: int
+    # List of trial_num values to run; if empty, run all trials
+    trial_list: list
+    # Number of parallel workers for trial execution
+    max_workers: int
     # Temperature for the model (OpenAI's default is 1.0)
     temperature: float
     # Number of examples the model sees before playing, or null
