@@ -192,7 +192,7 @@ preprocess_data <- function(data, nudge_type = NULL, reasoning_evals = FALSE) {
         source == "GPT-5R-Med" ~ "5R-Med",
         source == "Gemini 1.5 Flash" ~ "1.5 Flash",
         source == "Gemini 1.5 Pro" ~ "1.5 Pro",
-        source == "Gemini 2.5 Flash" ~ "1.5 Flash",
+        source == "Gemini 2.5 Flash" ~ "2.5 Flash",
         source == "Gemini 2.5 Pro" ~ "2.5 Pro",
         source == "Gemini 2.5 Pro-Min" ~ "2.5 Pro-Min",
         source == "Gemini 2.5 Pro-Med" ~ "2.5 Pro-Med",
@@ -309,7 +309,9 @@ sep_model_and_reasoning <- function(data) {
 calculate_ks_stats <- function(
   data,
   filter_condition = NULL,
-  group_vars = c("source", "method")
+  group_vars = c("source", "method"),
+  robustness_B = 100000,
+  simulation_seed = 20260414
 ) {
   if (!is.null(filter_condition)) {
     data <- data %>% filter(!!rlang::parse_expr(filter_condition))
@@ -319,27 +321,180 @@ calculate_ks_stats <- function(
     filter(source == "Human") %>%
     pull(n_uncovered)
 
-  result <- data %>%
-    filter(source != "Human") %>%
-    group_by(across(all_of(group_vars))) %>%
-    summarize(
-      ks_stat = ks.test(
-        n_uncovered,
-        human_data
-      )$statistic,
-      ks_p = ks.test(
-        n_uncovered,
-        human_data
-      )$p.value,
-      .groups = "drop"
-    ) %>%
-    arrange(ks_stat) %>%
-    as.data.frame() %>%
-    mutate(
-      ks_p = p.adjust(ks_p, method = "BH")
-    )
+  compute_ks_variant <- function(simulate_p_value) {
+    if (simulate_p_value) {
+      set.seed(simulation_seed)
+    }
 
-  result
+    data %>%
+      filter(source != "Human") %>%
+      group_by(across(all_of(group_vars))) %>%
+      group_modify(function(df, keys) {
+        ks_result <- if (simulate_p_value) {
+          ks.test(
+            df$n_uncovered,
+            human_data,
+            simulate.p.value = TRUE,
+            B = robustness_B
+          )
+        } else {
+          ks.test(
+            df$n_uncovered,
+            human_data,
+            simulate.p.value = FALSE
+          )
+        }
+
+        tibble(
+          ks_stat = unname(ks_result$statistic),
+          ks_p = ks_result$p.value
+        )
+      }) %>%
+      ungroup() %>%
+      arrange(ks_stat) %>%
+      as.data.frame() %>%
+      mutate(
+        ks_p = p.adjust(ks_p, method = "BH")
+      )
+  }
+
+  list(
+    main = compute_ks_variant(FALSE),
+    robustness = compute_ks_variant(TRUE)
+  )
+}
+
+calculate_human_split_half_ks <- function(
+  data,
+  filter_condition = NULL,
+  simulation_seed = 20260414
+) {
+  if (!is.null(filter_condition)) {
+    data <- data %>% filter(!!rlang::parse_expr(filter_condition))
+  }
+
+  human_data <- data %>%
+    filter(source == "Human")
+
+  set.seed(simulation_seed)
+  participant_ids <- human_data$participant_id %>%
+    unique() %>%
+    sample()
+
+  split_assignment <- rep(c("Half 1", "Half 2"), length.out = length(participant_ids))
+  participant_split <- tibble(
+    participant_id = participant_ids,
+    split = split_assignment
+  )
+
+  human_data <- human_data %>%
+    left_join(participant_split, by = "participant_id")
+
+  human_half_1 <- human_data %>%
+    filter(split == "Half 1") %>%
+    pull(n_uncovered)
+
+  human_half_2 <- human_data %>%
+    filter(split == "Half 2") %>%
+    pull(n_uncovered)
+
+  ks_result <- ks.test(
+    human_half_1,
+    human_half_2,
+    simulate.p.value = FALSE
+  )
+
+  tibble(
+    ks_stat = unname(ks_result$statistic),
+    ks_p = ks_result$p.value
+  )
+}
+
+calculate_human_split_half_ks_summary <- function(
+  data,
+  filter_condition = NULL,
+  n_splits = 1000,
+  simulation_seed = 20260414,
+  max_exact_splits = 5000
+) {
+  if (!is.null(filter_condition)) {
+    data <- data %>% filter(!!rlang::parse_expr(filter_condition))
+  }
+
+  participant_ids <- data %>%
+    filter(source == "Human") %>%
+    pull(participant_id) %>%
+    unique() %>%
+    sort()
+
+  n_participants <- length(participant_ids)
+  half_size <- floor(n_participants / 2)
+  n_possible_splits <- choose(n_participants, half_size)
+
+  if (n_participants %% 2 == 0) {
+    n_possible_splits <- n_possible_splits / 2
+  }
+
+  use_exact_splits <- n_possible_splits <= max_exact_splits
+
+  split_seeds <- if (use_exact_splits) {
+    seq_len(n_possible_splits)
+  } else {
+    seq_len(n_splits)
+  }
+
+  split_results <- if (use_exact_splits) {
+    participant_combinations <- combn(participant_ids, half_size, simplify = FALSE)
+
+    if (n_participants %% 2 == 0) {
+      participant_combinations <- participant_combinations %>%
+        keep(function(split_ids) {
+          min(split_ids) == min(participant_ids)
+        })
+    }
+
+    participant_combinations %>%
+      map_dfr(function(split_ids) {
+        human_data <- data %>%
+          filter(source == "Human")
+
+        human_half_1 <- human_data %>%
+          filter(participant_id %in% split_ids) %>%
+          pull(n_uncovered)
+
+        human_half_2 <- human_data %>%
+          filter(!(participant_id %in% split_ids)) %>%
+          pull(n_uncovered)
+
+        ks_result <- ks.test(
+          human_half_1,
+          human_half_2,
+          simulate.p.value = FALSE
+        )
+
+        tibble(
+          ks_stat = unname(ks_result$statistic),
+          ks_p = ks_result$p.value
+        )
+      })
+  } else {
+    split_seeds %>%
+      map_dfr(function(split_idx) {
+      calculate_human_split_half_ks(
+        data = data,
+        filter_condition = NULL,
+        simulation_seed = simulation_seed + split_idx - 1
+      ) %>%
+        mutate(split_idx = split_idx)
+    })
+  }
+
+  split_results %>%
+    summarize(
+      ks_stat_mean = mean(ks_stat),
+      ks_stat_ci_lower = quantile(ks_stat, 0.025),
+      ks_stat_ci_upper = quantile(ks_stat, 0.975)
+    )
 }
 
 fit_reasoning_model <- function(data, outcome.var = "mean_reasoning_tokens") {
@@ -398,11 +553,11 @@ make.emm_table <- function(
         EMM
       )
     )
-  
+
   emm_table %>%
     kbl("markdown") %>%
     write_lines(output.path %>% str_replace("\\.tex$", ".md"))
-  
+
   emm_table %>%
     pivot_wider(
       id_cols = all_of(id_cols),
@@ -458,10 +613,9 @@ get_cost_per_token_for_model <- function(model_name, token_type = "input") {
       "Claude 4.5 Sonnet" = 15
     )
   )
-  
+
   model_name %>%
     sapply(function(name) {
       cost_mapping_1m_tokens[[name]] / 1e6
     })
 }
-

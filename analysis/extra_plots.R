@@ -107,7 +107,7 @@ for (method_type in c("Base", "FS", "CoT")) {
       fill = list(n_reveals = 0, prop_reveals = 0),
     ) %>%
     ungroup() %>%
-    mutate( # nesting() in complete() causes some issues, so we need to re-do this
+    mutate(
       source_parent = case_when(
         source == "Human" ~ " ",
         str_detect(as.character(source), "o3") ~ "o-Series",
@@ -128,7 +128,7 @@ for (method_type in c("Base", "FS", "CoT")) {
         source == "GPT-5R-Med" ~ "5R-Med",
         source == "Gemini 1.5 Flash" ~ "1.5 Flash",
         source == "Gemini 1.5 Pro" ~ "1.5 Pro",
-        source == "Gemini 2.5 Flash" ~ "1.5 Flash",
+        source == "Gemini 2.5 Flash" ~ "2.5 Flash",
         source == "Gemini 2.5 Pro" ~ "2.5 Pro",
         source == "Gemini 2.5 Pro-Min" ~ "2.5 Pro-Min",
         source == "Gemini 2.5 Pro-Med" ~ "2.5 Pro-Med",
@@ -175,7 +175,7 @@ for (method_type in c("Base", "FS", "CoT")) {
     dpi = 300,
     plot = .
   )
-  
+
   salience_plots[[method_type]] <- plot_salience
 }
 

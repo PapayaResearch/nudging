@@ -88,7 +88,7 @@ def main():
                     df[col] = df.index.map(lambda x: [])
                 else:
                     df[col] = df[col].map(eval)
-            
+
             df["sum_reasoning_tokens"] = df["reasoning_tokens"].map(sum)
             df["mean_reasoning_tokens"] = df["reasoning_tokens"].map(lambda x : numpy.mean(x) if len(x) > 0 else 0)
 
@@ -143,15 +143,15 @@ def main():
 
             def highlight_reveals(row: pandas.Series) -> int:
                 uncovered_values = eval(row.uncovered_values)
-                uncovered_values = sorted(set(uncovered_values)) # Remove any duplicate reveals
                 n_cols = row.n_baskets
                 uncovered_valuerows = [v//n_cols for v in uncovered_values]
                 highlight_reveals = [v for v in uncovered_valuerows if v == row.nudge_index]
 
                 is_first_index_nudged = False
                 if len(highlight_reveals) > 0:
-                    is_first_index_nudged = highlight_reveals[0] == row.nudge_index
+                    is_first_index_nudged = uncovered_valuerows[0] == row.nudge_index
 
+                highlight_reveals = [v for v in [v//n_cols for v in set(uncovered_values)] if v == row.nudge_index]
                 assert len(highlight_reveals) <= n_cols, (highlight_reveals, n_cols, row.n_prizes)
                 return len(highlight_reveals), is_first_index_nudged
 

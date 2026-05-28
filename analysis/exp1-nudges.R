@@ -117,7 +117,7 @@ p.gridshape <- emm.gridshape %>%
     scale_color_atlassian() +
     coord_flip() +
     xlab("Model") +
-    ylab("P(Choose Nudge)") +
+    ylab("P(Follow Nudge)") +
     guides(color = guide_legend(title = "Grid Shape")) +
     theme_nudge()
 
@@ -204,7 +204,7 @@ p.idiosyncracy <- data_default_prep %>%
   ) +
   scale_color_cosmic() +
   xlab("Idiosyncracy Bin") +
-  ylab("P(Reject Then Choose Nudge)") +
+  ylab("P(Reject Then Follow Nudge)") +
   theme_nudge() +
   theme(legend.position = "none")
 
@@ -363,7 +363,7 @@ p.highlight.trial_nudge <- emm_highlight.trial_nudge %>%
   scale_color_aaas() +
   coord_flip() +
   xlab("Model") +
-  ylab("P(Choose Nudge)") +
+  ylab("P(Follow Nudge)") +
   guides(color = guide_legend(title = "Highlight Absent/Present")) +
   theme_nudge()
 
@@ -399,19 +399,53 @@ emm_highlight <- emm_highlight %>% as_tibble() %>%
 # INFORMATION ACQUISITION
 # ============================================================================
 
+annotate_ks_results <- function(ks_results, experiment_name) {
+  list(
+    main = ks_results$main %>%
+      mutate(experiment = experiment_name),
+    robustness = ks_results$robustness %>%
+      mutate(experiment = experiment_name)
+  )
+}
+
 ks_default <- calculate_ks_stats(data_default, "trial_nudge == 'Abs.'") %>%
-  mutate(experiment = "Default")
+  annotate_ks_results("Default")
 
 ks_highlight <- calculate_ks_stats(data_highlight, "trial_nudge == 'Abs.'") %>%
-  mutate(experiment = "Highlight")
+  annotate_ks_results("Highlight")
 
 ks_suggestion <- calculate_ks_stats(data_suggestion, "trial_nudge == 'Abs.'") %>%
-  mutate(experiment = "Suggestion")
+  annotate_ks_results("Suggestion")
 
 ks_optimal <- calculate_ks_stats(data_optimal, group_vars = c("source", "method")) %>%
-  mutate(experiment = "Optimal")
+  annotate_ks_results("Optimal")
 
-ks_combined <- bind_rows(ks_default, ks_highlight, ks_suggestion, ks_optimal) %>%
+ks_combined <- bind_rows(
+  ks_default$main,
+  ks_highlight$main,
+  ks_suggestion$main,
+  ks_optimal$main
+) %>%
+  mutate(experiment = factor(experiment, levels = c("Default", "Suggestion", "Highlight", "Optimal")))
+
+ks_combined_robustness <- bind_rows(
+  ks_default$robustness,
+  ks_highlight$robustness,
+  ks_suggestion$robustness,
+  ks_optimal$robustness
+) %>%
+  mutate(experiment = factor(experiment, levels = c("Default", "Suggestion", "Highlight", "Optimal")))
+
+ks_human_baseline <- bind_rows(
+  calculate_human_split_half_ks_summary(data_default, "trial_nudge == 'Abs.'") %>%
+    mutate(experiment = "Default"),
+  calculate_human_split_half_ks_summary(data_highlight, "trial_nudge == 'Abs.'") %>%
+    mutate(experiment = "Highlight"),
+  calculate_human_split_half_ks_summary(data_suggestion, "trial_nudge == 'Abs.'") %>%
+    mutate(experiment = "Suggestion"),
+  calculate_human_split_half_ks_summary(data_optimal) %>%
+    mutate(experiment = "Optimal")
+) %>%
   mutate(experiment = factor(experiment, levels = c("Default", "Suggestion", "Highlight", "Optimal")))
 
 # ============================================================================
@@ -523,7 +557,7 @@ p.default <- emm_default %>%
   scale_color_aaas() +
   coord_flip() +
   xlab("Model") +
-  ylab("P(Choose Nudge)") +
+  ylab("P(Follow Nudge)") +
   guides(color = guide_legend(title = "Default Absent/Present")) +
   theme_nudge()
 
@@ -574,7 +608,7 @@ p.suggestion <- emm_suggestion %>%
   guides(color = guide_legend(title = "Suggestion Timing")) +
   coord_flip() +
   xlab("Model") +
-  ylab("P(Choose Nudge)") +
+  ylab("P(Follow Nudge)") +
   theme_nudge()
 
 p.suggestion %>%
@@ -623,7 +657,7 @@ p.highlight <- emm_highlight %>%
   scale_color_cosmic() +
   coord_flip() +
   xlab("Model") +
-  ylab("P(Choose Nudge)") +
+  ylab("P(Follow Nudge)") +
   guides(color = guide_legend(title = "Highlight Optimality")) +
   theme_nudge()
 
@@ -679,49 +713,91 @@ diffs_combined %>%
   scale_color_uchicago() +
   coord_flip() +
   xlab("Model") +
-  ylab("∆P(Choose Nudge)") +
+  ylab("∆P(Follow Nudge)") +
   guides(color = guide_legend(title = "Difference")) +
   theme_nudge()
 
+make_ks_plot <- function(ks_data, ks_human_baseline) {
+  ks_data %>%
+    add_significance_stars(p_col = "ks_p") %>%
+    ggplot(aes(reorder(source, ks_stat), ks_stat, color = method, fill = method)) +
+    geom_rect(
+      data = ks_human_baseline,
+      aes(
+        xmin = -Inf,
+        xmax = Inf,
+        ymin = ks_stat_ci_lower,
+        ymax = ks_stat_ci_upper
+      ),
+      fill = "grey50",
+      alpha = 0.12,
+      color = NA,
+      inherit.aes = FALSE
+    ) +
+    geom_hline(
+      data = ks_human_baseline,
+      aes(yintercept = ks_stat_mean, linetype = "Human split-half KS mean"),
+      color = "black",
+      linewidth = 0.5,
+      inherit.aes = FALSE,
+      show.legend = TRUE
+    ) +
+    geom_bar(
+      stat = "identity",
+      position = position_dodge2(width = 0.7, preserve = "single"),
+      width = 0.6,
+      color = "black",
+      linewidth = 0.4
+    ) +
+    geom_text(
+      aes(
+        y = ks_stat + 0.12,
+        label = sig_stars
+      ),
+      size = 4,
+      position = position_dodge2(width = 0.7, preserve = "single"),
+      vjust = 0.75,
+      hjust = 0.5,
+      show.legend = FALSE
+    ) +
+    facet_wrap(~ experiment, nrow = 1) +
+    scale_y_continuous(
+      limits = c(0, 1.1),
+      breaks = seq(0, 1, by = 0.25),
+      expand = expansion(mult = c(0, 0.12))
+    ) +
+    scale_color_atlassian() +
+    scale_fill_atlassian() +
+    scale_linetype_manual(values = c("Human split-half KS mean" = "dashed")) +
+    coord_flip() +
+    xlab("Model") +
+    ylab("KS Statistic") +
+    guides(
+      color = "none",
+      fill = guide_legend(title = "Method", order = 1),
+      linetype = guide_legend(
+        title = NULL,
+        order = 2,
+        override.aes = list(color = "black", linewidth = 0.5)
+      )
+    ) +
+    theme_nudge()
+}
 
-plot.ks <- ks_combined %>%
-  add_significance_stars(p_col = "ks_p") %>%
-  ggplot(aes(reorder(source, ks_stat), ks_stat, color = method, fill = method)) +
-  geom_bar(
-    stat = "identity",
-    position = position_dodge2(width = 0.7, preserve = "single"),
-    width = 0.6,
-    color = "black",
-    linewidth = 0.4
-  ) +
-  geom_text(
-    aes(
-      y = ks_stat + 0.12,
-      label = sig_stars
-    ),
-    size = 4,
-    position = position_dodge2(width = 0.7, preserve = "single"),
-    vjust = 0.75,
-    hjust = 0.5,
-    show.legend = FALSE
-  ) +
-  facet_wrap(~ experiment, nrow = 1) +
-  scale_y_continuous(
-    limits = c(0, 1.1),
-    breaks = seq(0, 1, by = 0.25),
-    expand = expansion(mult = c(0, 0.12))
-  ) +
-  scale_color_atlassian() +
-  scale_fill_atlassian() +
-  coord_flip() +
-  xlab("Model") +
-  ylab("KS Statistic") +
-  guides(fill = guide_legend(title = "Method")) +
-  theme_nudge()
+plot.ks <- make_ks_plot(ks_combined, ks_human_baseline)
+plot.ks.robustness <- make_ks_plot(ks_combined_robustness, ks_human_baseline)
 
 plot.ks %>%
   ggsave(
     filename = "figures/ks-stats.pdf",
+    plot = .,
+    width = 10,
+    height = 6
+  )
+
+plot.ks.robustness %>%
+  ggsave(
+    filename = "figures/ks-stats-robustness-simulated-p-value.pdf",
     plot = .,
     width = 10,
     height = 6
@@ -779,6 +855,439 @@ plot.earnings <- earnings_combined %>%
 plot.earnings %>%
   ggsave(
     filename = "figures/earnings-estimates.pdf",
+    plot = .,
+    width = 10,
+    height = 6
+  )
+
+compute_cohens_d <- function(x, y) {
+  pooled_sd <- sqrt(
+    (
+      ((length(x) - 1) * stats::sd(x)^2) +
+      ((length(y) - 1) * stats::sd(y)^2)
+    ) / (length(x) + length(y) - 2)
+  )
+
+  ifelse(pooled_sd == 0, NA_real_, (mean(x) - mean(y)) / pooled_sd)
+}
+
+compute_sign_flip_p <- function(diff) {
+  diff <- diff[!is.na(diff) & diff != 0]
+
+  if (length(diff) == 0) {
+    return(NA_real_)
+  }
+
+  observed <- mean(diff)
+  null_signs <- expand.grid(rep(list(c(-1, 1)), length(diff)))
+  null_means <- as.vector(as.matrix(null_signs) %*% abs(diff) / length(diff))
+
+  mean(null_means >= observed)
+}
+
+make_gap_summary <- function(
+  data,
+  value_var,
+  group_vars,
+  experiment_name
+) {
+  if (is.null(group_vars)) {
+    data <- data %>%
+      mutate(.gap_group = "All")
+    group_vars <- ".gap_group"
+  }
+
+  data %>%
+    group_by(across(all_of(group_vars))) %>%
+    group_modify(
+      function(df, keys) {
+        human_values <- df %>%
+          subset(source == "Human") %>%
+          pull(!!sym(value_var))
+
+        df %>%
+          subset(source != "Human") %>%
+          group_by(source) %>%
+          summarize(
+            gap = abs(compute_cohens_d(.data[[value_var]], human_values)),
+            .groups = "drop"
+          )
+      }
+    ) %>%
+    ungroup() %>%
+    mutate(experiment = experiment_name) %>%
+    group_by(source, experiment) %>%
+    summarize(
+      gap = mean(gap, na.rm = TRUE),
+      .groups = "drop"
+    )
+}
+
+outcome_gap_combined <- bind_rows(
+  make_gap_summary(
+    data_default,
+    "total_points",
+    "trial_nudge",
+    "Default"
+  ),
+  make_gap_summary(
+    data_suggestion,
+    "total_points",
+    "trial_nudge",
+    "Suggestion"
+  ),
+  make_gap_summary(
+    data_highlight,
+    "total_points",
+    "trial_nudge",
+    "Highlight"
+  ),
+  make_gap_summary(
+    data_optimal,
+    "total_points",
+    "nudge_type",
+    "Optimal"
+  )
+) %>%
+  rename(outcome_gap = gap) %>%
+  mutate(
+    experiment = factor(
+      experiment,
+      levels = c("Default", "Suggestion", "Highlight", "Optimal")
+    )
+  )
+
+intervention_gap_combined <- bind_rows(
+  make_gap_summary(
+    data_default_prep,
+    "chose_nudge",
+    "trial_nudge",
+    "Default"
+  ),
+  make_gap_summary(
+    data_suggestion_prep,
+    "chose_nudge",
+    "trial_nudge",
+    "Suggestion"
+  ),
+  make_gap_summary(
+    data_highlight_prep,
+    "is_first_index_nudged",
+    "is_nudge_index_optimal",
+    "Highlight"
+  )
+) %>%
+  rename(intervention_gap = gap) %>%
+  mutate(
+    experiment = factor(
+      experiment,
+      levels = c("Default", "Suggestion", "Highlight")
+    )
+  )
+
+strategy_gap_combined <- bind_rows(
+  make_gap_summary(
+    data_default %>% subset(trial_nudge == "Abs."),
+    "n_uncovered",
+    NULL,
+    "Default"
+  ),
+  make_gap_summary(
+    data_suggestion %>% subset(trial_nudge == "Abs."),
+    "n_uncovered",
+    NULL,
+    "Suggestion"
+  ),
+  make_gap_summary(
+    data_highlight %>% subset(trial_nudge == "Abs."),
+    "n_uncovered",
+    NULL,
+    "Highlight"
+  ),
+  make_gap_summary(
+    data_optimal,
+    "n_uncovered",
+    NULL,
+    "Optimal"
+  )
+) %>%
+  rename(strategy_gap = gap) %>%
+  mutate(
+    experiment = factor(
+      experiment,
+      levels = c("Default", "Suggestion", "Highlight", "Optimal")
+    )
+  )
+
+process_outcome_intervention <- outcome_gap_combined %>%
+  subset(experiment != "Optimal") %>%
+  left_join(
+    intervention_gap_combined,
+    by = c("source", "experiment")
+  ) %>%
+  transmute(
+    source = source,
+    experiment = factor(
+      experiment,
+      levels = c("Default", "Suggestion", "Highlight", "Optimal")
+    ),
+    outcome_gap = outcome_gap,
+    process_gap = intervention_gap,
+    metric = "Intervention-Sensitivity Gap",
+    color_group = "intervention"
+  )
+
+process_outcome_strategy <- outcome_gap_combined %>%
+  left_join(
+    strategy_gap_combined,
+    by = c("source", "experiment")
+  ) %>%
+  transmute(
+    source = source,
+    experiment = factor(
+      experiment,
+      levels = c("Default", "Suggestion", "Highlight", "Optimal")
+    ),
+    outcome_gap = outcome_gap,
+    process_gap = strategy_gap,
+    metric = "Strategy Divergence from Human",
+    color_group = "strategy"
+  )
+
+process_outcome_blank <- tibble(
+  source = NA_character_,
+  experiment = factor(
+    "Optimal",
+    levels = c("Default", "Suggestion", "Highlight", "Optimal")
+  ),
+  outcome_gap = NA_real_,
+  process_gap = NA_real_,
+  metric = "Intervention-Sensitivity Gap",
+  color_group = "intervention"
+)
+
+process_outcome_combined <- bind_rows(
+  process_outcome_intervention,
+  process_outcome_strategy,
+  process_outcome_blank
+) %>%
+  mutate(
+    metric = factor(
+      metric,
+      levels = c(
+        "Intervention-Sensitivity Gap",
+        "Strategy Divergence from Human"
+      )
+    )
+  ) %>%
+  ungroup()
+
+process_outcome_perm_test <- process_outcome_combined %>%
+  mutate(diff = process_gap - outcome_gap) %>%
+  group_by(metric, experiment) %>%
+  summarize(
+    n_positive = sum(diff > 0, na.rm = TRUE),
+    n_nonzero = sum((diff != 0) & !is.na(diff)),
+    p_value = compute_sign_flip_p(diff),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    label = ifelse(
+      is.na(p_value),
+      NA,
+      "Perm. test p = %s" %>% sprintf(format.pval(p_value, digits = 2, eps = 0.0001))
+    ),
+    x = 1.5,
+    y = 0.2
+  )
+
+process_outcome_labels <- process_outcome_combined %>%
+  subset(!is.na(source) & !is.na(outcome_gap) & !is.na(process_gap)) %>%
+  group_by(metric, experiment) %>%
+  reframe(
+    bind_rows(
+      slice_min(cur_data(), outcome_gap, n = 1, with_ties = FALSE),
+      slice_max(cur_data(), outcome_gap, n = 1, with_ties = FALSE),
+      slice_min(cur_data(), process_gap, n = 1, with_ties = FALSE),
+      slice_max(cur_data(), process_gap, n = 1, with_ties = FALSE)
+    ) %>%
+      distinct(source, .keep_all = TRUE)
+  ) %>%
+  ungroup()
+
+plot.process_outcome <- process_outcome_combined %>%
+  ggplot(aes(outcome_gap, process_gap, color = color_group)) +
+  geom_abline(
+    intercept = 0,
+    slope = 1,
+    linetype = "dotted",
+    color = "gray55",
+    linewidth = 0.6
+  ) +
+  geom_point(
+    size = 3,
+    alpha = 0.6
+  ) +
+  geom_text(
+    data = process_outcome_labels,
+    aes(label = source),
+    hjust = -0.15,
+    vjust = 0.2,
+    size = 3,
+    check_overlap = TRUE,
+    show.legend = FALSE
+  ) +
+  geom_label(
+    data = process_outcome_perm_test,
+    aes(x = x, y = y, label = label),
+    inherit.aes = FALSE,
+    hjust = 0.5,
+    vjust = 1,
+    size = 3,
+    linewidth = 0.25,
+    fill = "white",
+    color = "black"
+  ) +
+  facet_grid(
+    metric ~ experiment,
+    drop = FALSE
+  ) +
+  scale_color_manual(
+    values = c(
+      "intervention" = "#2F5D62",
+      "strategy" = "#8C3B3B"
+    ),
+    guide = "none"
+  ) +
+  scale_x_continuous(
+    limits = c(0, 2.08),
+    breaks = seq(0, 1.5, by = 0.5),
+    expand = expansion(mult = c(0.04, 0))
+  ) +
+  scale_y_continuous(
+    limits = c(0, 2.08),
+    breaks = seq(0, 1.5, by = 0.5),
+    expand = expansion(mult = c(0.04, 0))
+  ) +
+  xlab(expression("Earnings Gap from Human (" * "|" * "Cohen's " * italic(d) * "|" * ")")) +
+  ylab(expression("Process Gap from Human (" * "|" * "Cohen's " * italic(d) * "|" * ")")) +
+  theme_nudge() +
+  theme(
+    aspect.ratio = 1,
+    plot.margin = margin(8, 18, 8, 8)
+  )
+
+plot.process_outcome %>%
+  ggsave(
+    filename = "figures/outcome-process-alignment.pdf",
+    plot = .,
+    width = 14,
+    height = 8
+  )
+
+ baseline_conditions <- tribble(
+  ~experiment, ~baseline_condition,
+  "Default", "Abs.",
+  "Suggestion", "Abs.",
+  "Highlight", "Abs.",
+  "Optimal", "Random"
+)
+
+condition_labels <- tribble(
+  ~experiment, ~condition, ~contrast_label,
+  "Default", "Pres.", "Present default vs absent",
+  "Suggestion", "Early", "Early suggestion vs absent",
+  "Suggestion", "Late", "Late suggestion vs absent",
+  "Highlight", "Pres.", "Highlight present vs absent",
+  "Optimal", "Extreme", "Extreme pre-reveal vs random",
+  "Optimal", "Optimal", "Optimal pre-reveal vs random"
+)
+
+earnings_deltas <- earnings_combined %>%
+  left_join(
+    baseline_conditions,
+    by = "experiment"
+  ) %>%
+  left_join(
+    condition_labels,
+    by = c("experiment", "condition")
+  ) %>%
+  group_by(source, experiment) %>%
+  mutate(
+    baseline_emmean = emmean[condition == baseline_condition]
+  ) %>%
+  ungroup() %>%
+  subset(!is.na(contrast_label)) %>%
+  mutate(
+    earnings_delta = emmean - baseline_emmean,
+    experiment = factor(
+      experiment,
+      levels = c("Default", "Suggestion", "Highlight", "Optimal")
+    )
+  )
+
+human_earnings_deltas <- earnings_deltas %>%
+  subset(source == "Human") %>%
+  select(experiment, contrast_label, human_earnings_delta = earnings_delta)
+
+plot.earnings_deltas <- earnings_deltas %>%
+  subset(source != "Human") %>%
+  left_join(
+    human_earnings_deltas,
+    by = c("experiment", "contrast_label")
+  ) %>%
+  mutate(
+    source = fct_reorder(source, earnings_delta, .desc = FALSE),
+    contrast_label = factor(
+      contrast_label,
+      levels = c(
+        "Present default vs absent",
+        "Early suggestion vs absent",
+        "Late suggestion vs absent",
+        "Highlight present vs absent",
+        "Extreme pre-reveal vs random",
+        "Optimal pre-reveal vs random"
+      )
+    )
+  ) %>%
+  ggplot(aes(source, earnings_delta, color = experiment)) +
+  geom_hline(
+    aes(yintercept = 0, linetype = "No earnings change"),
+    color = "gray70",
+    linewidth = 0.4,
+    show.legend = TRUE
+  ) +
+  geom_hline(
+    aes(yintercept = human_earnings_delta, linetype = "Human earnings change"),
+    color = "black",
+    linewidth = 0.5,
+    show.legend = TRUE
+  ) +
+  geom_pointrange(
+    aes(ymin = lower.CL - baseline_emmean, ymax = upper.CL - baseline_emmean),
+    size = 0.3,
+    show.legend = FALSE
+  ) +
+  facet_wrap(~ interaction(experiment, contrast_label, sep = ": ", lex.order = TRUE), scales = "free_x", nrow = 2) +
+  scale_color_d3() +
+  scale_linetype_manual(
+    values = c(
+      "No earnings change" = "solid",
+      "Human earnings change" = "dashed"
+    ),
+    name = NULL
+  ) +
+  coord_flip() +
+  xlab("Model") +
+  ylab("Estimated Earnings Change from Baseline") +
+  guides(color = guide_legend(title = "Experiment")) +
+  theme_nudge() +
+  theme(plot.subtitle = element_text(size = 10, hjust = 0)) +
+  theme(strip.text = element_text(size = 10))
+
+plot.earnings_deltas %>%
+  ggsave(
+    filename = "figures/earnings-deltas.pdf",
     plot = .,
     width = 10,
     height = 6
@@ -912,37 +1421,64 @@ earnings_combined.table %>%
   add_header_above(c(" " = 1, "Estimated Earnings (SE)" = 8)) %>%
   write_lines("tables/earnings-emm-table.tex")
 
-
-ks_combined.table <- ks_combined %>%
-  add_significance_stars(p_col = "ks_p") %>%
+make_ks_table_data <- function(ks_data) {
+  ks_data %>%
+    add_significance_stars(p_col = "ks_p") %>%
     mutate(
       D = paste0(round(ks_stat, 2)) %>%
         ifelse(is.na(sig_stars), ., paste0(., "$^{", sig_stars, "}$"))
     ) %>%
     arrange(source, method, experiment)
+}
+
+ks_combined.table <- make_ks_table_data(ks_combined)
+ks_combined_robustness.table <- make_ks_table_data(ks_combined_robustness)
 
 ks_combined.table %>%
-    kable("markdown") %>%
-    write_lines("tables/ks-statistics-table.md")
+  kable("markdown") %>%
+  write_lines("tables/ks-statistics-table.md")
+
+ks_combined_robustness.table %>%
+  kable("markdown") %>%
+  write_lines("tables/ks-statistics-table-robustness-simulated-p-value.md")
 
 ks_combined.table %>%
-    pivot_wider(
-      names_from = c("experiment"),
-      values_from = D,
-      id_cols = c("source", "method"),
-      names_sep = " --- "
-    ) %>%
-    kbl(
-      "latex",
-      booktabs = TRUE,
-      escape = FALSE,
-      caption = "KS statistics across all models and experiments.",
-      linesep = "",
-      position = "!htb",
-      label = "ks-statistics-table"
-    ) %>%
-    add_header_above(c(" " = 2, "KS Statistic" = 4)) %>%
-    write_lines("tables/ks-statistics-table.tex")
+  pivot_wider(
+    names_from = c("experiment"),
+    values_from = D,
+    id_cols = c("source", "method"),
+    names_sep = " --- "
+  ) %>%
+  kbl(
+    "latex",
+    booktabs = TRUE,
+    escape = FALSE,
+    caption = "KS statistics across all models and experiments.",
+    linesep = "",
+    position = "!htb",
+    label = "ks-statistics-table"
+  ) %>%
+  add_header_above(c(" " = 2, "KS Statistic" = 4)) %>%
+  write_lines("tables/ks-statistics-table.tex")
+
+ks_combined_robustness.table %>%
+  pivot_wider(
+    names_from = c("experiment"),
+    values_from = D,
+    id_cols = c("source", "method"),
+    names_sep = " --- "
+  ) %>%
+  kbl(
+    "latex",
+    booktabs = TRUE,
+    escape = FALSE,
+    caption = "KS statistics across all models and experiments. Robustness check using simulated p-values.",
+    linesep = "",
+    position = "!htb",
+    label = "ks-statistics-table-robustness-simulated-p-value"
+  ) %>%
+  add_header_above(c(" " = 2, "KS Statistic (Robustness Check)" = 4)) %>%
+  write_lines("tables/ks-statistics-table-robustness-simulated-p-value.tex")
 
 
 emm_default %>% make.emm_table(
