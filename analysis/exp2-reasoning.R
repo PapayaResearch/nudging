@@ -280,6 +280,26 @@ diffs_combined <- rbind(
 ) %>%
   mutate(nudge_type = factor(nudge_type, levels = c("Default", "Highlight", "Suggestion")))
 
+nudge_axis_levels <- tribble(
+  ~model, ~reasoning_effort,
+  "Human", "Unknown",
+  "GPT-5", "Medium",
+  "GPT-5", "Low",
+  "GPT-5", "Minimal",
+  "Claude 4.5 Sonnet", "Medium",
+  "Claude 4.5 Sonnet", "Low",
+  "Gemini 2.5 Pro", "Medium",
+  "Gemini 2.5 Pro", "Low"
+) %>%
+  mutate(
+    model_reasoning_label = paste(model, reasoning_effort, sep = " / ")
+  ) %>%
+  pull(model_reasoning_label)
+
+nudge_group_separators <- tibble(
+  xintercept = c(1.5, 4.5, 6.5)
+)
+
 # ============================================================================
 # FIGURES
 # ============================================================================
@@ -287,10 +307,20 @@ diffs_combined <- rbind(
 p.nudge_default <- emm_default %>%
   mutate(
     nudge_type = "Default",
-    reasoning_effort = factor(reasoning_effort, levels = c("Unknown", "Medium", "Low", "Minimal"))
+    reasoning_effort = factor(reasoning_effort, levels = c("Unknown", "Medium", "Low", "Minimal")),
+    model_reasoning_label = paste(model, reasoning_effort, sep = " / ") %>%
+      factor(levels = nudge_axis_levels)
   ) %>%
   add_significance_stars(p_col = "contrast_p_value") %>%
-  ggplot(aes(reorder(interaction(model, reasoning_effort, sep = " / ", lex.order = TRUE), model == "Human"), prob, color = trial_nudge)) +
+  ggplot(aes(model_reasoning_label, prob, color = trial_nudge)) +
+  geom_vline(
+    data = nudge_group_separators,
+    aes(xintercept = xintercept),
+    inherit.aes = FALSE,
+    color = "grey75",
+    linetype = "dotted",
+    linewidth = 0.6
+  ) +
   geom_pointrange(
     aes(ymin = asymp.LCL, ymax = asymp.UCL),
     size = 0.3
@@ -325,7 +355,7 @@ p.nudge_default <- emm_default %>%
   scale_color_aaas() +
   coord_flip() +
   xlab("Model") +
-  ylab("P(Choose Nudge)") +
+  ylab("P(Follow Nudge)") +
   guides(color = guide_legend(title = "Default Absent/Present")) +
   theme_nudge() +
   theme(axis.text.y = element_text(hjust = 0))
@@ -334,10 +364,20 @@ p.nudge_default <- emm_default %>%
 p.nudge_suggestion <- emm_suggestion %>%
   mutate(
     nudge_type = "Suggestion",
-    reasoning_effort = factor(reasoning_effort, levels = c("Unknown", "Medium", "Low", "Minimal"))
+    reasoning_effort = factor(reasoning_effort, levels = c("Unknown", "Medium", "Low", "Minimal")),
+    model_reasoning_label = paste(model, reasoning_effort, sep = " / ") %>%
+      factor(levels = nudge_axis_levels)
   ) %>%
   add_significance_stars(p_col = "contrast_p_value") %>%
-  ggplot(aes(reorder(interaction(model, reasoning_effort, sep = " / ", lex.order = TRUE), model == "Human"), prob, color = trial_nudge)) +
+  ggplot(aes(model_reasoning_label, prob, color = trial_nudge)) +
+  geom_vline(
+    data = nudge_group_separators,
+    aes(xintercept = xintercept),
+    inherit.aes = FALSE,
+    color = "grey75",
+    linetype = "dotted",
+    linewidth = 0.6
+  ) +
   geom_pointrange(
     aes(ymin = asymp.LCL, ymax = asymp.UCL),
     size = 0.3
@@ -373,7 +413,7 @@ p.nudge_suggestion <- emm_suggestion %>%
   guides(color = guide_legend(title = "Suggestion Timing")) +
   coord_flip() +
   xlab("Model") +
-  ylab("P(Choose Nudge)") +
+  ylab("P(Follow Nudge)") +
   theme_nudge() +
   theme(axis.text.y = element_text(hjust = 0))
 
@@ -381,10 +421,20 @@ p.nudge_suggestion <- emm_suggestion %>%
 p.nudge_highlight <- emm_highlight %>%
   mutate(
     nudge_type = "Highlight",
-    reasoning_effort = factor(reasoning_effort, levels = c("Unknown", "Medium", "Low", "Minimal"))
+    reasoning_effort = factor(reasoning_effort, levels = c("Unknown", "Medium", "Low", "Minimal")),
+    model_reasoning_label = paste(model, reasoning_effort, sep = " / ") %>%
+      factor(levels = nudge_axis_levels)
   ) %>%
   add_significance_stars(p_col = "contrast_p_value") %>%
-  ggplot(aes(reorder(interaction(model, reasoning_effort, sep = " / ", lex.order = TRUE), model == "Human"), prob, color = is_nudge_index_optimal)) +
+  ggplot(aes(model_reasoning_label, prob, color = is_nudge_index_optimal)) +
+  geom_vline(
+    data = nudge_group_separators,
+    aes(xintercept = xintercept),
+    inherit.aes = FALSE,
+    color = "grey75",
+    linetype = "dotted",
+    linewidth = 0.6
+  ) +
   geom_pointrange(
     aes(ymin = asymp.LCL, ymax = asymp.UCL),
     size = 0.3
@@ -419,7 +469,7 @@ p.nudge_highlight <- emm_highlight %>%
   scale_color_cosmic() +
   coord_flip() +
   xlab("Model") +
-  ylab("P(Choose Nudge)") +
+  ylab("P(Follow Nudge)") +
   guides(color = guide_legend(title = "Highlight Optimality")) +
   theme_nudge() +
   theme(axis.text.y = element_text(hjust = 0))
