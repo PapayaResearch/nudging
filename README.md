@@ -47,11 +47,15 @@ The analysis R code is located in `analysis/`. It contains the results, and all 
 
 Please cite this work as follows:
 ```bibtex
-@article{cherep2025llm,
-  title={LLM Agents Are Hypersensitive to Nudges},
+@article{cherep2026ai,
+  title={AI agents are sensitive to nudges},
   author={Cherep, Manuel and Maes, Pattie and Singh, Nikhil},
-  journal={arXiv preprint arXiv:2505.11584},
-  year={2025}
+  journal={Proceedings of the National Academy of Sciences},
+  volume={123},
+  number={25},
+  pages={e2537030123},
+  year={2026},
+  publisher={National Academy of Sciences}
 }
 @inproceedings{cherep2024superficial,
   title={Superficial Alignment, Subtle Divergence, and Nudge Sensitivity in LLM Decision-Making},
